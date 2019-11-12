@@ -7,13 +7,16 @@ output: github_document
 
 This script is for didactive purposes and to document conversions- DO NOT USE
 ---see used datasheet for re-running dat
-Script is the dirty behind the scene fixing that is necessary to any meta-analysis.
+Script is the behind the scene fixing that is necessary to any meta-analysis.
 it is messy, but in the fight to improve science and keep all steps open, we made it public.
-it combines data, primarily the infomration entered for each study
+it combines data, primarily the information entered for each study
 please see final data file for output as we did not make all orignial data available
-but made the scirp tavaialable for learning
-it checks most colums for entry error
-it then does checks as follows
+
+it uses worms database and package to check that species names are the current accepted names and get the species taxonomy
+
+it checks most columns for entry error- if unrealisitc number occur they were corrected by going back to referene to double check
+
+it then calculates 3 different effect sizes
 
 
 ## libraries

@@ -1,0 +1,250 @@
+---
+title: "cnidarian_meta-analysis_statistics"
+author: "Nathan R. Geraldi"
+date: "November 12, 2019"
+output: github_document
+---
+
+
+Script is ot run the statisical analysis of the cnidarian data
+it uses the metafor package
+
+
+## libraries
+```{r Libraries}
+
+library(tidyverse)
+library("metafor")
+library("Rmisc")
+library("plotrix")
+library("tiff")
+
+```
+
+## functions
+```{r_func}
+
+
+```
+
+## universal variables
+```{r directory}
+## file that has data
+dat_file="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+#  also in  dat_file="/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export/"
+
+## file to save data
+save_file="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+##  shared file to save data
+save_file_shared="/Users/geraldn/Dropbox/Cnidaria meta-data/data"
+
+
+```
+
+## get data
+meta-analysis data and others
+```{r data}
+
+dat<-read.table(paste(dat_file,"meta-analysis_used_data.csv",sep="" ), sep=",",header=T)   ## na
+
+```
+
+
+## tidy data
+keep only calcyfying corals and remove deep sea corals
+```{r tidy_dat}
+
+ sdat<- dat %>% #  names(sdat)   names(dat)   unique(dat$Deep.sea.)
+   filter(Taxa_catagory=="Calcifying coral")  %>%  ##  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   filter(Deep.sea.=="No" | is.na(Deep.sea.))  %>% 
+  mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
+  mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm)
+
+```
+
+
+## setup fro meta-analysis
+```{r meta_setup}
+
+# make blank dataframe to input stat results
+op <- data.frame(Estimate=integer(),
+                 SE=integer(),
+                 zval=integer(),
+                 pval=integer(),
+                 ci.lb=integer(),
+                 ci.ub=integer(),
+                 stressor=character(),
+                 variable=character(),
+                 response=character(),
+                 sample_size=integer(),
+                 stringsAsFactors=FALSE)
+
+#  set up variables and maximium AE
+maxyi<-20  # code will remove the absolute value greater than this, removes very few but these are HUGE AE outlyers that make now logical sense
+s_stud<-levels(sdat$Stressor.studied)
+resp<-levels(sdat$Trait.type)
+
+#   names(sdat)
+```
+
+## meta-analysis
+runs loop to run all catagory combinations
+puts results into table
+```{r meta-analysis}
+###### start looop   ######
+w<-1
+
+for (j in c(1,2)) {   # for stressor
+  
+ # tryCatch({
+  
+    if (j==1) {
+       sdat$yi<-sdat$temp_AE # !!!!!!! check which one  !!!!!!!!!!!
+       sdat$vi<-sdat$temp_AE_variation
+       sdat$change<-sdat$temp_change
+       s_stud2 <-s_stud[c(3,2)]
+       minchange<-0.5 # set this to filer out any temp change < minchange - difference between experimental and control
+       qqq<-"temperature"
+    } else {
+       #sdat$yi<-sdat$AE_9eV_CO2ppm  #  class(sdat$yi)  names(sdat)
+       sdat$yi<-sdat$CO2_AE
+        sdat$vi<-sdat$CO2_AE_variation
+        sdat$change<-sdat$co2_change
+        s_stud2<-s_stud[1:2]
+        minchange<-50  # set this to filer out any CO2 change < minchange - difference between experimental and control
+        qqq<-"CO2"}
+  
+  for ( h in c(1,2)) {
+      target<-s_stud2[h]
+
+  for (i in c(1:length(resp))) {  # for diffreent catagories  i<-1
+    #    target<-"warming"  #    names(sdat)
+      sdat2 <- sdat %>% 
+        filter(Stressor.studied==target & complete.cases(Stressor.studied)) %>% 
+        filter(Trait.type==resp[i])  %>% 
+        filter(change > minchange)  %>%    # 
+        filter(abs(yi)<= maxyi) %>%  #   hist(sdat$AE_9eV_temp)
+
+        dplyr::select(yi,vi,Reference.ID,Genus) %>% 
+        drop_na() %>% 
+        filter(is.finite(vi))  %>% 
+        filter(complete.cases(yi))  %>% 
+        filter(!is.infinite(yi)) 
+
+    #run model with each pub per species    PROVINCE/
+            m1<-rma.mv(yi,vi,random=list(~1 | Reference.ID, ~1 | Genus),
+           data=sdat2, method="ML") 
+
+            funnel(m1, level=c(95), shade=c("white", "gray", "darkgray"), refline=0)
+            forest(m1)
+            
+            
+        op[w,1]<-m1$beta  # ESTIMATE  q<-m1$beta[[1]]  op[1,1]<-q
+        op[w,2]<-m1$se   # $SE
+        op[w,3]<-m1$zval  # 
+        op[w,4]<-m1$pval  # 
+        op[w,5]<-m1$ci.lb   # 
+        op[w,6]<-m1$ci.ub  # $S
+        op[w,4]<-m1$pval  # 
+        op[w,5]<-m1$ci.lb   # 
+        op[w,6]<-m1$ci.ub  
+        op[w,7]<-target
+        op[w,8]<-resp[i]
+        op[w,9]<-qqq
+        op[w,10]<-length(row.names(sdat2))
+
+      w<-w+1
+  }
+  }
+ #  }, error=function(e){})
+}
+
+```
+
+
+## export
+
+```{r export}
+#### export op to shared folder
+
+#     write.table(op, paste(save_file_shared,"meta-analysis_summary_github.csv",sep=""), sep=",",row.names=F)
+```
+
+
+## diagnositcs
+some makeshift code to check for biases and outliers
+
+```{r diagnositcs}
+
+sdat$yi<-sdat$AE_9eV_temp_pos_response # !!!!!!! check which one  !!!!!!!!!!!
+sdat$vi<-sdat$AE_9eV_temp_variation
+sdat$change<-sdat$temp_change
+s_stud2<-s_stud[c(3,2)]
+minchange<-0.5 
+qqq<-"temperature"
+i<-3  # choose resp
+h<-1  # choose warming - 1 or both - 2
+target<-s_stud2[h]
+
+sdat2 <- sdat %>%  # names(sdat2)
+  filter(Stressor.studied==target & complete.cases(Stressor.studied)) %>% 
+  filter(variable.label.fix.2.fix_PAM==resp[i])  %>% 
+  filter(change > minchange)  %>%    # as suggested by Carlos
+  filter(abs(yi)<= maxyi) %>%  #15?  25 works    hist(sdat$AE_9eV_temp)
+  
+  dplyr::select(yi,vi,PROVINCE,Original.ref.number,genus) %>% 
+  drop_na() %>% 
+  filter(is.finite(vi))  %>% 
+  filter(complete.cases(yi))  %>% 
+  filter(!is.infinite(yi)) %>% 
+  group_by(Original.ref.number) %>% 
+  mutate(study_num = as.character(match(Original.ref.number, unique(Original.ref.number))))  %>%
+  ungroup() 
+
+
+  
+sdat2<- sdat2 %>% 
+  filter(!(study_num==38))
+ # filter(!(study_num==11 |study_num==46))
+    
+
+#run model with each pub per species    PROVINCE/
+m1<-rma.mv(yi,vi,random=list(~1 | Original.ref.number, ~1 | genus),
+           data=sdat2, method="ML")
+m1
+
+
+hist(m1$yi.f)
+get_bad<-sdat2 %>% 
+  mutate(mod_yi = m1$yi.f) %>% 
+  filter (mod_yi>4)
+
+
+funnel(m1, level=c(95), shade=c("white", "gray", "darkgray"), refline=0)
+pp<-forest(m1)
+
+
+
+## get summary
+mes<-sdat2 %>% 
+  group_by(Original.ref.number) %>% 
+  mutate(study_num = as.character(match(Original.ref.number, unique(Original.ref.number))))  %>%
+  ungroup() %>% 
+  group_by(study_num) %>% 
+  dplyr::summarise(mean_st = mean(yi)) %>% 
+  arrange(desc(mean_st))
+```
+
+## desc
+
+```{r desc}
+
+```
+
+
+
+
+
+
+
+
