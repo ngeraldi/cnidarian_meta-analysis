@@ -1,0 +1,832 @@
+---
+title: "tidy_entered_data_cnidarian_meta-analysis"
+author: "Nathan R. Geraldi"
+date: "November 12, 2019"
+output: github_document
+---
+
+This script is for didactive purposes and to document conversions- DO NOT USE
+---see used datasheet for re-running dat
+Script is the dirty behind the scene fixing that is necessary to any meta-analysis.
+it is messy, but in the fight to improve science and keep all steps open, we made it public.
+it combines data, primarily the infomration entered for each study
+please see final data file for output as we did not make all orignial data available
+but made the scirp tavaialable for learning
+it checks most colums for entry error
+it then does checks as follows
+
+
+## libraries
+```{r Libraries}
+
+library(tidyverse)
+
+# libaries needed but not loaded  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#  psych
+#  worrms
+```
+
+## functions
+```{r_func}
+
+
+```
+
+## universal variables
+```{r directory}
+#location of rater and shape files
+rast_data<-"/Users/geraldn/Dropbox/Global_databases/"
+
+## file that has data
+dat_file="/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export/"
+dat_file2="/Users/geraldn/Dropbox/Documents/KAUST/global change meta/raw_data/"
+
+## file to save data
+save_file="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+##  shared file to save data
+save_file_shared="/Users/geraldn/Dropbox/Cnidaria meta-data/data"
+
+#   setwd("/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export")
+```
+
+## get data
+meta-analysis data and others
+```{r data}
+
+########     data collected for meta-analysis
+## all references from ISI search -- see tidy_ISI_search script to compile and tidy search data
+ref<-read.table(paste(dat_file,"references.csv",sep="" ), sep=",",header=T,comment.char = "")
+## data entered which is unique to each study (manuscript)
+stud<-read.table(paste(dat_file,"study_data.csv",sep="" ), sep=",",header=T)
+## data entered for all rows of experiment - many rows for each manuscript
+dat<-read.table(paste(dat_file,"quantitative_data.csv",sep="" ), sep=",",header=T)
+##  Data collected for each species -- from the publications and https://coraltraits.org/
+trait<-openxlsx::read.xlsx(paste(dat_file2,"Species trait data_USE.xlsx",sep="" ),
+                              startRow=2,sheet = 1, check.names=T, cols= c(1:15))
+
+## get corrections to better group data collected.  This is a messy but necessary step as we need to catagorize data entered, this can be done befroe hand, but also need to be done post  data collection given that you cannot predict al catagories of data in publications
+corr1<-openxlsx::read.xlsx(paste(dat_file2,"Corrections_SK_28-02-2018.xlsx", sep="" ), startRow=1,sheet = 1, check.names=T)
+corr2<-openxlsx::read.xlsx(paste(dat_file2, "Corrections_SK_28-02-2018.xlsx", sep="" ), startRow=1,sheet = 2, check.names=T)
+corr1<-mutate_all(corr1, funs(tolower)) # make all column names lower case  -- always do this for any meta-analysis**
+corr2<-mutate_all(corr2, funs(tolower))
+
+### table to convert boxplot to SD ... get from publication 
+# source  - Wan_etal_2014
+wan<-read.table(paste(dat_file2,"Wan_etal_2014_T2.csv", sep=""), sep=",", header=T)
+
+### add data on latitudinal range of coral species - added to trait dat
+#  Source----- coral trait database at https://coraltraits.org/
+ranges<-read.table(paste(dat_file,"coral_species_ranges.csv",sep="" ), sep=",",header=T)
+
+### columns used in meta-analysis and descriptive/clear names - to be published in ??????
+names_final_dat<-openxlsx::read.xlsx(paste(dat_file2, "Columns and names for final meta_analysis.xlsx", sep="" ), startRow=1,sheet = 1, check.names=T)
+
+############################################################################################################
+## data collected from global layers ####################################
+
+#  Source  data  coral reef regions and richness  - retreived data from each unique study location 
+# script in "latitude_range_corals""
+##   data added to stud
+geodat<-read.table(paste(dat_file,"Study_regions.csv", sep="" ), sep=",", header=T) 
+
+###  script to extract this data data is from "Maps_and_extract_script"
+# added to dat3 - global-layer_data   section
+abiotic<-read.table(paste(dat_file, "biooracle_global_abiotic_present_surface.csv",sep="" ), sep=",",header=T)
+land<-read.table(paste(dat_file, "global_human_and_abiotic_present.csv",sep="" ), sep=",",header=T)
+vel<-read.table(paste(dat_file, "climate_velocities.csv",sep="" ), sep=",",header=T)
+
+```
+
+
+## tidy references
+
+```{r refs}
+ref1<- ref %>% 
+  mutate_at(vars(Reasons.for.rejection), funs(tolower))  %>% 
+  left_join(corr2) 
+```
+
+## tidy species data
+use trait table 
+use worms package to get accepted names
+use warms package to get taxonomy- Kingdom through species
+```{r tidy_sp}
+# tidy
+trait1<- trait %>% 
+    mutate(Genus=trimws(Genus)) %>%
+    mutate(Species=trimws(Species)) %>%
+    mutate(Genus.species=paste(Genus,Species,sep=" "))  %>% 
+    filter(!Genus.species=="Poritidae spp.")  # remove, changed to proties in data
+#  trait1$Genus.species[order(trait1$Genus.species)]
+##   check and change names in worms     ##################################
+#   library(worrms)
+x<-trait1$Genus.species # set species name column
+sp_info <- worrms::wm_records_names(name = x, fuzzy = F, marine_only = T) # get worrms info
+sp_info <- bind_rows(sp_info)    #  make dataframe,   names(my_sp_taxo)
+sp<-sp_info[,c(3,5,9)] # keep name, status, good name
+sp1<-sp[!sp$status=="deleted",] # just check, shouldn't change
+sp2<-sp1[!duplicated(sp1$scientificname),]  # check duplicates  2 removed
+#  mes<-sp1[duplicated(sp1$scientificname),]  
+#   mes2<-sp1[sp1$scientificname %in% mes$scientificname,] # get duplicated
+sp_miss<-setdiff(x,sp2$scientificname) ## find sp that didn't match
+sp_miss<-sp_miss[! stringr::str_detect(sp_miss, " sp")]   ## 15 with sp
+sp3<-sp2[sp2$status=="unaccepted",]  ## look at unaccepted
+#  update with accepted names
+trait1$Genus.species.fixed<-trait1$Genus.species
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Agaricia lamarki"]<-"Agaricia lamarcki"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Colastrea asprea"]<-"Coelastrea aspera"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Dipsastrea favus"]<-"Dipsastraea favus"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Eunicella cavolinii"]<-"Eunicella cavolini"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Favites chinesis"]<-"Favites chinensis"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Eunicea flecuosa"]<-"Eunicea flexuosa"  # bad spell
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Aiptasia pallida"]<-"Exaiptasia pallida" # unaccepted
+trait1$Genus.species.fixed[trait1$Genus.species.fixed=="Fungia scutaria"]<-"Lobactis scutaria"   # unaccepted
+#  Acropora formosa -111 change to Acropora muricata
+#### get taxonomy    #########
+trait1$Genus.species.fixed.worms<-trait1$Genus.species.fixed  #make column to get taxonomy
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Balanophyllia elegans"]<-"Balanophyllia (Balanophyllia) elegans"   # unaccepted
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Balanophyllia europaea"]<-"Balanophyllia (Balanophyllia) europaea"   # unaccepted
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Caryophyllia smithii"]<-"Caryophyllia (Caryophyllia) smithii"   # unaccepted
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Cassiopea sp"]<-"Cassiopea medusa"   # unaccepted
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Goniastrea fascicularis"]<-"Goniastrea minuta"   # unaccepted
+## bleow to get to species
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Acroporidae spp."]<-"Acropora cervicornis"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Agaricia sp."]<-"Agaricia agaricites"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Aiptasia sp."]<-"Aiptasia pulchella"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Dipsastrea sp."]<-"Dipsastraea favus"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Faviidae spp."]<-"Favites abdita"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Montastraea spp."]<-"Montastraea cavernosa"   #
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Palythoa sp."]<-"Palythoa caribaeorum"   #
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Pocilloporidae spp."]<-"Pocillopora meandrina"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Porites sp."]<-"Porites astreoides"   # 
+# removed  trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Poritidae spp."]<-"Porites astreoides"   # 
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Sinularia sp."]<-"Sinularia brassica"   #
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Stylophora spp."]<-"Stylophora pistillata"   
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Xenia sp."]<-"Xenia bauiana"   #
+trait1$Genus.species.fixed.worms[trait1$Genus.species.fixed=="Zoanthus sp."]<-"Zoanthus bertholetti"   #
+
+###   get taxonomy
+xx<-trait1$Genus.species.fixed.worms
+sp_info <- worrms::wm_records_names(name = xx, fuzzy = F, marine_only = T) # get worrm
+sp_info <- bind_rows(sp_info)    #  make dataframe,   names(sp_info)
+sp<-sp_info[,c(3,11:16)] # keep name, and taxonomy  names(sp)
+sp<-rename(sp,Genus.species.fixed.worms=scientificname)
+sp<-sp[complete.cases(sp$Genus.species.fixed.worms),]
+##   bind to trait1   names(trait2) 
+#   mes<-bind_rows(sp$Genus.species.fixed.worms,trait1$Genus.species.fixed.worms)
+#  mi<-setdiff(sp$Genus.species.fixed.worms,trait1$Genus.species.fixed.worms) 
+sp<-sp[-71,]  ## remove 2nd  Montipora hirsuta
+sp<-sp[-66,]  ## remove 2nd  Montastraea cavernosa
+######################
+# remove repeats or bad species ID's
+trait2<- trait1 %>% 
+  bind_cols(sp) %>%  ## add in lineage     TO DO !!!!! change to merge  !!!!!!!!!!!!!!
+  filter(!Species.ID==113) %>% #  poc domi - bad spelling
+  filter(!Species.ID==111)   # unaccepted, see above
+#  duplicated(trait1$Genus.species.fixed)
+
+#######  add new columns to trait2 to identify calcifying corals     names(trait)    unique(trait2$Taxa)   names(corr1)
+trait2$calcifying<-"no"
+trait2$calcifying[trait2$Taxa=="Calcifying coral"]<-"yes" 
+#  unique(corr1$Growth.form..calcifying.corals.)
+trait2 <- trait2  %>%    ## names(trait2)   unique(trait2$Growth.form..calcifying.corals.)
+  mutate_at(vars(Growth.form..calcifying.corals.), funs(tolower))  %>% 
+  mutate_at(vars(Growth.form..calcifying.corals.), funs(trimws))  %>% 
+  left_join(corr1[c(2:12,14,15),12:13])  # check column names *****************
+#######  fix catagoies
+trait2$Sexual.system[trait2$Sexual.system=="gonochore"]<-"Gonochore" 
+trait2$Mode.of.larval.development[trait2$Mode.of.larval.development=="spawner"]<-"Spawner" 
+trait2$Climate.zone[trait2$Climate.zone=="tropical"]<-"Tropical" 
+trait2$Deep.sea.[trait2$Deep.sea.=="no"]<-"No"    # unique(trait2$Deep.sea.)
+#    names(trait2)   unique(trait2$Sexual.system)
+##################
+# add in species latitudinal range,  from ranges
+trait2 <- trait2  %>%   # 83 species overlap      names(trait2)
+  left_join(ranges, by=c("Genus.species.fixed"="Taxon"))
+```
+
+
+## check_for_entry_errors
+```{r tidy_1}
+## use basic checks for unreasanalbe values
+mes<-dat[dat$experimental_temp.level..degrees.>=50,]
+mes<-mes[complete.cases(mes$experimental_temp.level..degrees.),]
+## fixes
+#dat$Temp..degrees.<-as.numeric(dat$Temp..degrees.)  # levels(dat$Temp..degrees.)  mes<-dat[dat$Temp..degrees.=="23-27" & complete.cases(dat$Temp..degrees.),]
+dat$light.conditions<-trimws(dat$light.conditions)
+dat$light.conditions[dat$light.conditions=="natural light conditions in the field, do not report"]<-NA
+dat$light.conditions[dat$light.conditions=="do not report"]<-NA
+dat$light.conditions[dat$light.conditions=="light measured as Kd 0.27–0.33 m-1"]<-NA
+dat$light.conditions[dat$light.conditions=="natural light conditions"]<-NA
+dat$light.conditions[dat$light.conditions==" 433.6"]<-433.6
+dat$light.conditions[dat$light.conditions=="30-107"]<-(30+107)/2
+dat$light.conditions<-as.numeric(dat$light.conditions)
+dat$Volume.of.aquaria..L.[dat$Volume.of.aquaria..L.=="not indiacated, I think 2 \\big tanks\\ (potential pseudoreplication)"]<-NA
+dat$Volume.of.aquaria..L.<-as.numeric(dat$Volume.of.aquaria..L.)
+#  DO and nuts, col 41 42 needs fixed
+dat$Stressor.studied<-as.character(dat$Stressor.studied)
+#  pp<-unique(dat$Stressor.studied)
+dat$Stressor.studied<-trimws(dat$Stressor.studied)
+dat$Stressor.studied[dat$Stressor.studied=="warming"]<-"Warming"
+ 
+##  fix species ID
+dat$species.ID[dat$species.ID==113]<-18
+dat$species.ID[dat$species.ID==111]<-66
+dat$species.ID[dat$species.ID==118]<-44  # get rid of poritidae , now porites
+#  fix pCO2
+dat$experimental_pCO2.level..µatm..ppm.[dat$Original.ref.number==45 & dat$experimental_pH.level==7.8]<-909.25
+dat$experimental_pCO2.level..µatm..ppm.[dat$Original.ref.number==84 & dat$experimental_pH.level==7.8]<-909.25
+dat$experimental_pCO2.level..µatm..ppm.[dat$Original.ref.number==159 & dat$experimental_pH.level==7.8]<-909.25
+dat$control_pCO2.level..µatm..ppm.[dat$Original.ref.number==84 & dat$experimental_pH.level==8.07]<-379.49 #7 obs
+dat$control_pCO2.level..µatm..ppm.[dat$Original.ref.number==45 & dat$experimental_pH.level==8.1]<-344.33 #6 obs
+dat$control_pCO2.level..µatm..ppm.[dat$Original.ref.number==159 & dat$experimental_pH.level==8.1]<-344.33 #12 obs
+dat$control_pCO2.level..µatm..ppm.[dat$Original.ref.number==159 & dat$experimental_pH.level==8.07]<-379.49 #6 obs
+#
+dat$experimental_pCO2.level..µatm..ppm.[dat$experimental_pCO2.level..µatm..ppm.==87.2]<-860.66
+dat$experimental_pCO2.level..µatm..ppm.[dat$experimental_pCO2.level..µatm..ppm.==85.2]<-840.92
+
+dat$control_pCO2.level..µatm..ppm.[dat$control_pCO2.level..µatm..ppm.==49.3]<-486.59
+```
+
+## tidy_study data
+
+```{r tidy_study}
+##   names(dat1)    names(stud)    names(stud2)  unique(stud2$Stressors.studied_study)
+##  fix species ID
+stud$Species.ID[stud$Species.ID==113]<-18
+stud$Species.ID[stud$Species.ID==111]<-66
+### fix letter within
+stud$Letter.ID.within.ref<-as.character(stud$Letter.ID.within.ref)
+stud$Letter.ID.within.ref[is.na(stud$Letter.ID.within.ref)]<-"a"
+stud2 <- stud %>%
+  mutate(Letter.ID.within.ref = as.character(Letter.ID.within.ref)) %>% 
+  mutate_at(vars(Letter.ID.within.ref,Stressors.studied), funs(tolower))  %>%
+  mutate_at(vars(Stressors.studied), funs(trimws))  %>%
+  unite(ref_letter_id, Original.ref.number , Letter.ID.within.ref, sep="_", remove=F) %>% 
+  dplyr::select(Original.ref.number, Data.retriever, ref_letter_id, Stressors.studied, Factorial.design.,Repeated.measure.,latitude..decimal.degrees., longitude..decimal.degrees. ,Location.name..country., Depth.of.collection..m.) %>% 
+  dplyr::rename(Data.retriever_study=Data.retriever,Stressors.studied_study=Stressors.studied)
+###  add in geographic info from meow   - geodat  names(geodat)
+#geodat2<-dplyr::select(geodat)
+stud3<- stud2 %>%    # names(geodat)
+    left_join(geodat, by = c("latitude..decimal.degrees.", "longitude..decimal.degrees."))
+#  names(stud3)
+```
+
+## standardize_deviation
+```{r descritp1}
+### convert all deviations to SD
+#  initial fixes
+mes<-dat[is.na(dat$experimental_variation.type),]
+## remove unknown variations and fix names
+## fro exp
+dat<-dat[complete.cases(dat$experimental_variation.type),]
+dat$experimental_variation.type[dat$experimental_variation.type=="Box plot IQR"]<-"Box plot"
+dat$experimental_variation.type[dat$experimental_variation.type=="CI"]<-"CI (95%)"
+dat$experimental_variation.type<- droplevels(dat$experimental_variation.type)
+#  unique(dat$experimental_variation.type)
+#  unique(dat$control_variation.type)
+#   for control
+dat<-dat[complete.cases(dat$control_variation.type),]
+dat$control_variation.type[dat$control_variation.type=="Box plot IQR"]<-"Box plot"
+dat$control_variation.type[dat$control_variation.type=="CI"]<-"CI (95%)"
+dat$control_variation.type<- droplevels(dat$control_variation.type)
+mes<-dat$experimental_variation[1:10]
+# make variation a character, was a factor
+dat$experimental_variation<-as.character(dat$experimental_variation)
+dat$control_variation<-as.character(dat$control_variation)
+# remove all whitespace
+dat$experimental_variation<-gsub("\\s", "", dat$experimental_variation) #  unique(dat$experimental_variation) 
+dat$control_variation<-gsub("\\s", "", dat$control_variation)    ###  mes10<-dat[dat$Original.ref.number==182,]   !!!!!!
+#####  convert   boxplots     names(mes)   ##################
+# split variation column and get upper and lower quartiles
+mes<-dat %>% 
+ filter(experimental_variation.type=="Box plot") 
+exp_ul <- data.frame(do.call('rbind', strsplit(as.character(mes$experimental_variation),',',fixed=TRUE))) # exp_ul$bp_upper
+exp_ul<-exp_ul %>% 
+  dplyr::rename(bp_lower=X1,bp_upper=X2) %>% 
+  mutate(bp_lower = as.character(bp_lower), bp_upper = as.character(bp_upper)) %>% 
+  mutate(bp_lower = as.numeric(bp_lower), bp_upper = as.numeric(bp_upper))
+con_ul <- data.frame(do.call('rbind', strsplit(as.character(mes$control_variation),',',fixed=TRUE)))
+con_ul<-con_ul %>% 
+  dplyr::rename(bp_lower=X1,bp_upper=X2) %>% 
+  mutate(bp_lower = as.character(bp_lower), bp_upper = as.character(bp_upper)) %>% 
+  mutate(bp_lower = as.numeric(bp_lower), bp_upper = as.numeric(bp_upper))
+###  get std dev from quartiles and mean from median  for boxplots
+mes2<-mes %>% 
+  bind_cols(exp_ul)  %>%   # names(mes2)  add exp_ul to mess
+  mutate(experimental_mean.response= (experimental_mean.response + bp_lower + bp_upper)/3) %>%   ## calc mean
+  mutate(Q=ceiling((experimental_sample.size-1)/4)) %>%  ## calc Q   range(mes$Q)
+  #  ##  add in Table 2 from Wan et al. 2014 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  left_join(wan)  %>%     
+  mutate(experimental_variation=(bp_upper - bp_lower)/nn) %>%  ### now stand. dev !!!!!!!!!!!!!!!!
+  dplyr::select(-c(bp_lower, bp_upper))  %>%
+ ## now for controls
+  bind_cols(con_ul) %>%
+  mutate(control_mean.response= (control_mean.response + bp_lower + bp_upper)/3) %>%   ## calc mean
+  mutate(control_variation=(bp_upper - bp_lower)/nn) %>%  ### now stand. dev !!!!!!
+  dplyr::select(-c(bp_lower, bp_upper, Q, nn)) 
+#  remove box plot from dat and add corrected box plot data  mes10<-dat[dat$Original.ref.number==182,] 
+dat <- dat %>% 
+  filter(!experimental_variation.type=="Box plot") %>% 
+  mutate(experimental_variation = as.numeric(experimental_variation),control_variation = as.numeric(control_variation)) %>% 
+  dplyr::bind_rows(mes2)
+#####   standardize to SD    ########################################
+## make new columns with dummy value to easily check
+dat$experimental_variation_good<-10000   ###  unique(quant1$variation.type)
+dat$control_variation_good<-10000 
+##### get SD       
+#  dat$variation<-as.numeric(dat$variation) unique(dat$experimental_variation.type)
+dat$experimental_variation_good[dat$experimental_variation.type=="SD"]<-dat$experimental_variation[dat$experimental_variation.type=="SD"]  
+dat$control_variation_good[dat$control_variation.type=="SD"]<-dat$control_variation[dat$control_variation.type=="SD"] 
+# add in boxplot calcs
+dat$experimental_variation_good[dat$experimental_variation.type=="Box plot"]<-dat$experimental_variation[dat$experimental_variation.type=="Box plot"] #
+dat$control_variation_good[dat$control_variation.type=="Box plot"]<-dat$control_variation[dat$control_variation.type=="Box plot"]
+#### convert SE  to SD
+dat$experimental_variation_good[dat$experimental_variation.type=="SE"]<-dat$experimental_variation[dat$experimental_variation.type=="SE"]*sqrt(dat$experimental_sample.size[dat$experimental_variation.type=="SE"]) 
+dat$control_variation_good[dat$control_variation.type=="SE"]<-dat$control_variation[dat$control_variation.type=="SE"]*sqrt(dat$control_sample.size[dat$control_variation.type=="SE"]) 
+###### convert CI  to SD
+# make SE
+dat$experimental_variation_good[dat$experimental_variation.type=="CI (95%)"]<-(dat$experimental_mean.response[dat$experimental_variation.type=="CI (95%)"] + dat$experimental_variation[dat$experimental_variation.type=="CI (95%)"]) - 
+  (dat$experimental_mean.response[dat$experimental_variation.type=="CI (95%)"] - dat$experimental_variation[dat$experimental_variation.type=="CI (95%)"])
+  #  make SD
+dat$experimental_variation_good[dat$experimental_variation.type=="CI (95%)"]<- dat$experimental_variation_good[dat$experimental_variation.type=="CI (95%)"]*sqrt(dat$experimental_sample.size[dat$experimental_variation.type=="CI (95%)"])
+# make se and sd from control
+dat$control_variation_good[dat$control_variation.type=="CI (95%)"]<-(dat$control_mean.response[dat$control_variation.type=="CI (95%)"] + dat$control_variation[dat$control_variation.type=="CI (95%)"]) - 
+  (dat$control_mean.response[dat$control_variation.type=="CI (95%)"] - dat$control_variation[dat$control_variation.type=="CI (95%)"])
+dat$control_variation_good[dat$control_variation.type=="CI (95%)"]<- dat$control_variation_good[dat$control_variation.type=="CI (95%)"]*sqrt(dat$control_sample.size[dat$control_variation.type=="CI (95%)"])
+#########  make variation alwasy positive  names(dat1)
+dat$experimental_variation_good<-abs(dat$experimental_variation_good)
+dat$control_variation_good<-abs(dat$control_variation_good)
+# over write clean up
+##    do at end
+
+### for checks
+mes1<-dat[!complete.cases(dat$control_variation),]  
+mes2<-dat[!complete.cases(dat$control_variation_good),]  ## why!!!!!!
+mes2<-dat[!complete.cases(dat$experimental_variation_good),] 
+```
+
+
+
+## standardize_time
+```{r stand_time}
+# fix errors
+dat$Duration.of.experiment[dat$Duration.of.experiment=="?"]<-NA     ## unique(dat$Duration.of.experiment)  unique(dat$Duration.unit)
+dat$Duration.of.experiment<-as.numeric(dat$Duration.of.experiment)
+dat$Duration.unit<-trimws(dat$Duration.unit)
+dat$Duration.unit[dat$Duration.unit=="week"]<-"weeks"
+dat$Duration.unit[dat$Duration.unit=="hour"]<-"hours"
+dat$Duration.unit[dat$Duration.unit=="month"]<-"months"
+dat$Duration.unit[dat$Duration.unit=="year"]<-"years"
+## standardize  range(dat$study.lengthdays, na.rm=T)    unique(dat$Duration.unit)
+dat$study.lengthdays<-dat$Duration.of.experiment
+dat$study.lengthdays[which(dat$Duration.unit=="minutes")]<-dat$Duration.of.experiment[which(dat$Duration.unit=="minutes")]/(60*24)
+dat$study.lengthdays[which(dat$Duration.unit=="hours")]<-dat$Duration.of.experiment[which(dat$Duration.unit=="hours")]/24
+dat$study.lengthdays[which(dat$Duration.unit=="weeks")]<-(dat$Duration.of.experiment[which(dat$Duration.unit=="weeks")])*7
+dat$study.lengthdays[which(dat$Duration.unit=="months")]<-dat$Duration.of.experiment[which(dat$Duration.unit=="months")]*30.4
+dat$study.lengthdays[which(dat$Duration.unit=="years")]<-dat$Duration.of.experiment[which(dat$Duration.unit=="years")]*265
+##  acclimation duration
+# unique(dat$Duration.of.acclimation)  unique(dat$Duration.unit.1)
+dat$Duration.unit.1<-trimws(dat$Duration.unit.1)
+dat$acclimation.lengthdays<-dat$Duration.of.acclimation
+dat$acclimation.lengthdays[which(dat$Duration.unit.1=="minutes")]<-dat$Duration.of.acclimation[which(dat$Duration.unit.1=="minutes")]/(60*24)
+dat$acclimation.lengthdays[which(dat$Duration.unit.1=="hours")]<-dat$Duration.of.acclimation[which(dat$Duration.unit.1=="hours")]/24
+dat$acclimation.lengthdays[which(dat$Duration.unit.1=="weeks")]<-dat$Duration.of.acclimation[which(dat$Duration.unit.1=="weeks")]*7
+dat$acclimation.lengthdays[which(dat$Duration.unit.1=="months")]<-dat$Duration.of.acclimation[which(dat$Duration.unit.1=="months")]*30.4
+dat$acclimation.lengthdays[which(dat$Duration.unit.1=="years")]<-dat$Duration.of.acclimation[which(dat$Duration.unit.1=="years")]*265
+##### make column for total duraiton of the experiment
+dat$total_study_length<-dat$study.lengthdays+dat$acclimation.lengthdays
+
+#  psych::describe(dat$experimental_pCO2.level..µatm..ppm.)   # good
+#  psych::describe(dat$control_pCO2.level..µatm..ppm.)
+#  mes1<-dat[dat$experimental_pCO2.level..µatm..ppm.<300 & complete.cases(dat$experimental_pCO2.level..µatm..ppm.),]
+#  mes<-dat[dat$control_pCO2.level..µatm..ppm.<300 & complete.cases(dat$control_pCO2.level..µatm..ppm.),]
+##########################################################################################
+#####      standardize time from variables      ##########     names(dat)   unique(dat1$variable.unit)
+#pat<-paste(pat, collapse = "|")
+pat.sec<-c("s-")
+pat.hour<-paste(c("h","hr","hours"), collapse = "|")
+pat.day<-paste(c("da","d-"), collapse = "|")
+pat.week<-c("week")
+pat.mon<-c("month")
+pat.yr<-c("yr")
+#filter(grepl(pat, lineage))  %>% 
+dat<-dat %>% 
+  mutate(variable.unit=as.character(variable.unit)) %>% 
+  mutate(variable.unit=trimws(variable.unit)) %>% 
+  # fix any rate not in days
+  mutate(fix.rates=1) %>%   #  mes<-dat1[dat1$fix.rates==3600,]
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.sec), 86400)) %>% 
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.hour), 24)) %>% 
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.day), 1)) %>% 
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.week), 0.1428571)) %>%   # 1/7
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.mon), 0.03333333)) %>%   # 1/30
+  mutate(fix.rates = replace(fix.rates, stringr::str_detect(variable.unit, pattern = pat.yr), 0.002739726))  # 1/365
+##########################################################################################
+##########################################################################################
+
+```
+
+
+## new_catagories
+combine with corr tables to make new catagories for data
+#### now dat1
+```{r new_cat}
+#########   add columns with new groupings from corr1    names(corr1)   names(dat)  unique(dat1$ITS.Symbiot.type)
+dat1<- dat %>% 
+  mutate_at(vars(variable.label,Symbiotic.vs..Non.symbiotic,life.history.stage,Other.factor.1,Other.factor.2,ITS.Symbiot.type), funs(tolower))  %>% 
+  mutate_at(vars(variable.label,Symbiotic.vs..Non.symbiotic,life.history.stage,Other.factor.1,Other.factor.2,ITS.Symbiot.type), funs(trimws))  %>% 
+  left_join(corr1[c(1:18,20:40),1:3])  %>% 
+  left_join(corr1[1:3,4:5])  %>% 
+  left_join(corr1[,6:7])  %>% 
+  left_join(corr1[1:39,8:9])  %>% 
+  left_join(corr1[1:19,10:11]) %>% 
+  left_join(corr1[c(2:27,29),14:15])
+#  unique(dat1$life.history.stage.fix)
+
+```
+
+
+## fix_pam
+add new column and correct pam entries
+```{r fix_pam}
+### add one more new column     unique(dat1$variable.label.fix)  unique(dat1$variable.label)  unique(corr1$variable.label)
+dat1$symbiont_response<-"no"
+pat<-unique(dat1$variable.label.fix)
+pat<-pat[c(9,6,7,8,24)]
+dat1$symbiont_response[dat1$variable.label.fix %in% pat]<-"yes"
+### add new column with fixed pam - remove some wierd measures
+dat1$variable.label.fix.2.fix_PAM<-dat1$variable.label.fix.2  # unique(dat1$variable.label.fix.2)
+dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variable.type=="Saturation irradiance (Ek)"]<-"other"   # unique(dat1$variable.type)
+dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variable.type=="Ymax"]<-"other" 
+dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variable.type=="ETR max"]<-"other" 
+dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variable.unit=="cm-2"]<-"other"   #  unique(dat1$variable.unit)
+#  names(dat1)
+```
+
+
+## effect_direction
+fix to macke sure the effect sizes that experimental less means negative
+```{r effect_dir}
+######   effect.direction fix and convert signs for negative impact    names(dat2)
+#  unique(dat1$effect.direction)
+dat1$effect.direction<-tolower(dat1$effect.direction)
+dat1$effect.direction[dat1$effect.direction=="negativ"]<-"negative"
+###  change all respiration to posititve    
+dat1$effect.direction[dat1$variable.label.fix=="respiration"]<-"positive"  # unique(dat1$variable.label.fix)
+#   mes<-dat1[dat1$effect.direction=="negative" & complete.cases(dat1$effect.direction),]
+##  if negative than multiply by -1
+#dat1$experimental_mean.response[dat1$effect.direction=="negative" && complete.cases(dat1$effect.direction)]<-dat1$experimental_mean.response*-1
+#dat1$control_mean.response[dat1$effect.direction=="negative" && complete.cases(dat1$effect.direction)]<-dat1$control_mean.response*-1
+
+```
+
+
+## calc_response abs(>1)
+If using any log in formulas for effett size, you need to make response and variance abs(>1) to maintain relative effects after tranformation
+!!!!!!!  This includes AE calulations used for meta-analysis !!!!!!!!!!!
+```{r resp_recalc}
+############  make mean responses >=1 for log trans ###
+dat1$mean_fix<-1.00001   # make new column all 0
+#  if exp mean <1 than put that number in mean_fix
+dat1$mean_fix[dat1$experimental_mean.response<=1]<-dat1$experimental_mean.response[dat1$experimental_mean.response<=1]
+#  if con mean < mean_fix than put that number in mean_fix
+dat1$mean_fix[dat1$mean_fix>dat1$control_mean.response]<-dat1$control_mean.response[dat1$mean_fix>dat1$control_mean.response]
+## check variance for smaller numbers
+dat1$mean_fix[dat1$mean_fix>dat1$experimental_variation_good]<-dat1$experimental_variation_good[dat1$mean_fix>dat1$experimental_variation_good]
+dat1$mean_fix[dat1$mean_fix>dat1$control_variation_good]<-dat1$control_variation_good[dat1$mean_fix>dat1$control_variation_good]
+#
+dat1$mean_fix2<-0  # make new column to get constant and get constant
+dat1$mean_fix2[dat1$mean_fix<=0]<-abs(dat1$mean_fix[dat1$mean_fix<=0])+1.1#  if resp <0 then take absolute value +1
+dat1$mean_fix2[dat1$mean_fix<=1 & dat1$mean_fix>0]<- (1 - dat1$mean_fix[dat1$mean_fix<=1 & dat1$mean_fix>0])+0.1 # if resp >0 and <1 than 1- column
+##  psych::describe(dat1$mean_fix2)     dat1$mean_fix2[1:1000]
+#  names(dat1)
+##  add constant to mean response than to variance!!  
+dat1$experimental_mean_response_positive<-dat1$experimental_mean.response + dat1$mean_fix2
+dat1$control_mean_response_positive<-dat1$control_mean.response + dat1$mean_fix2##  psych::describe(dat1$mean_fix2) 
+#    mes<-dat1[dat1$control_variation_good_positive<1.1,]
+dat1$experimental_variation_good_positive<-dat1$experimental_variation_good + dat1$mean_fix2##  psych::describe(dat1$experimental_variation_good_positive) 
+dat1$control_variation_good_positive<-dat1$control_variation_good + dat1$mean_fix2##  psych::describe(dat1$control_mean_variation_good_positive) 
+# psych::describe(dat1$experimental_mean.response)
+# psych::describe(dat1$experimental_mean_response_positive)   # mes<-dat1[dat1$experimental_mean.response_positive<=1,]
+# psych::describe(dat1$control_mean.response)
+# psych::describe(dat1$control_mean_response_positive)  # min(dat1$control_mean.response_positive)
+```
+
+## convert_to_rates
+depending on effect size calculation, may want rates per time when relevent
+```{r desc}
+####       make new rate, log if % mort or survival log means           names(dat1)    unique(dat1$variable.unit)  unique(dat1$variable.type)  unique(dat1$variable.label)
+mes<-grep( "%",unique(dat1$variable.unit), value=T) ##  need to find "% per month" and divide by 30 to make days
+dat1<-dat1 %>% 
+  #  get rates for everything, means than variance
+  mutate(exp_mean_rate=experimental_mean.response/study.lengthdays, con_mean_rate=control_mean.response/study.lengthdays) %>% 
+  mutate(exp_variation_rate=experimental_variation_good/study.lengthdays, con_variation_rate=control_variation_good/study.lengthdays) 
+  #    fix.rates if already rate then doesn't need changed
+  # exp
+dat1$exp_mean_rate[complete.cases(dat1$fix.rates)]<- dat1$experimental_mean.response[complete.cases(dat1$fix.rates)]*dat1$fix.rates[complete.cases(dat1$fix.rates)]
+dat1$exp_variation_rate[complete.cases(dat1$fix.rates)]<- dat1$experimental_variation_good[complete.cases(dat1$fix.rates)]*dat1$fix.rates[complete.cases(dat1$fix.rates)]
+  # con
+dat1$con_mean_rate[complete.cases(dat1$fix.rates)]<- dat1$control_mean.response[complete.cases(dat1$fix.rates)]*dat1$fix.rates[complete.cases(dat1$fix.rates)]
+dat1$con_variation_rate[complete.cases(dat1$fix.rates)]<- dat1$control_variation_good[complete.cases(dat1$fix.rates)]*dat1$fix.rates[complete.cases(dat1$fix.rates)]
+  # percents
+  ## if mortality and % then take 1-100, if survival take log and divide all by study length in days
+    # exp  !!! 39 exp_variation==0     mes<-dat1$exp_variation_rate[dat1$exp_variation_rate==0]
+  ### unit is  day-1  !!!!!!!!!!!!
+  dat1$exp_mean_rate[dat1$variable.label=="mortality"]<- ((log(100-dat1$experimental_mean.response[dat1$variable.label=="mortality"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="mortality"])
+  dat1$exp_mean_rate[dat1$variable.label=="survival"]<- ((log(dat1$experimental_mean.response[dat1$variable.label=="survival"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="survival"])
+  dat1$exp_variation_rate[dat1$variable.label=="mortality"]<- ((log(100-dat1$experimental_variation_good[dat1$variable.label=="mortality"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="mortality"])
+  dat1$exp_variation_rate[dat1$variable.label=="survival"]<- ((log(dat1$experimental_variation_good[dat1$variable.label=="survival"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="survival"])
+    # contol
+  dat1$con_mean_rate[dat1$variable.label=="mortality"]<- ((log(100-dat1$control_mean.response[dat1$variable.label=="mortality"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="mortality"])
+  dat1$con_mean_rate[dat1$variable.label=="survival"]<- ((log(dat1$control_mean.response[dat1$variable.label=="survival"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="survival"])
+  dat1$con_variation_rate[dat1$variable.label=="mortality"]<- ((log(100-dat1$control_variation_good[dat1$variable.label=="mortality"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="mortality"])
+  dat1$con_variation_rate[dat1$variable.label=="survival"]<- ((log(dat1$control_variation_good[dat1$variable.label=="survival"]))*-1)/(dat1$study.lengthdays[dat1$variable.label=="survival"])
+    #  remove PAMs
+  dat1$exp_mean_rate[dat1$variable.label=="pam"]<-NA
+  dat1$con_mean_rate[dat1$variable.label=="pam"]<-NA
+  dat1$exp_variation_rate[dat1$variable.label=="pam"]<-NA
+  dat1$con_variation_rate[dat1$variable.label=="pam"]<-NA
+  ##########################################################################################
+  #####    make rates > 1
+  # make new columns
+  dat1$exp_mean_rate_positive<-dat1$exp_mean_rate
+  dat1$con_mean_rate_positive<-dat1$con_mean_rate
+  dat1$mean_fix<-1.00001   # make new column all 0
+  #  if exp mean <1 than put that number in mean_fix
+  dat1$mean_fix[dat1$exp_mean_rate<=1 & complete.cases(dat1$exp_mean_rate)]<-dat1$exp_mean_rate[dat1$exp_mean_rate<=1 & complete.cases(dat1$exp_mean_rate)]
+  #  if con mean < mean_fix than put that number in mean_fix
+  dat1$mean_fix[dat1$mean_fix>dat1$con_mean_rate & complete.cases(dat1$con_mean_rate)]<-dat1$con_mean_rate[dat1$mean_fix>dat1$con_mean_rate & complete.cases(dat1$con_mean_rate)]
+  #####
+  dat1$mean_fix2<-0  # make new column to get constant
+  dat1$mean_fix2[dat1$mean_fix<=0]<-abs(dat1$mean_fix[dat1$mean_fix<=0])+1.1#  if <0 then take absolute value +1
+  dat1$mean_fix2[dat1$mean_fix<=1 & dat1$mean_fix>0]<- (1 - dat1$mean_fix[dat1$mean_fix<=1 & dat1$mean_fix>0])+0.1 # if >0 and <1 than 1- column
+  ##  psych::describe(dat1$mean_fix2)     dat1$mean_fix2[1:1000]
+  #  names(dat1)
+  dat1$exp_mean_rate_positive<-dat1$exp_mean_rate_positive + dat1$mean_fix2
+  dat1$con_mean_rate_positive<-dat1$con_mean_rate_positive + dat1$mean_fix2 
+```
+
+## diff_exp_and_control
+Get difference in experimental treatments and make some catagories
+```{r desc}
+ dat1<-dat1 %>%   # names(dat1)
+  mutate(temp_change=experimental_temp.level..degrees.-control_temp.level)  %>% 
+  mutate(pH_change=control_pH.level-experimental_pH.level) %>% 
+  mutate(co2_change=experimental_pCO2.level..µatm..ppm.-control_pCO2.level..µatm..ppm.) %>% 
+  mutate(ambient_temp_new=control_temp.level) %>% 
+  mutate(ambient_temp_new=if_else(is.na(ambient_temp_new), Temp..degrees., ambient_temp_new ))
+## make catagories for differnces  hist(dat1$pH_change)
+  dat1$temp_change_6catagory <- cut(dat1$temp_change, breaks=c(-Inf,2,3,4,5,7, Inf), 
+        labels=c("<2","2-3","3-4","4-5","5-7",">7"))
+  dat1$temp_change_3catagory <- cut(dat1$temp_change, breaks=c(-Inf,2,4,Inf), 
+                                   labels=c("<2","2-4",">4"))
+  dat1$pH_change_4catagory <- cut(dat1$pH_change, breaks=c(-Inf ,0.2 ,0.3 ,0.4, Inf), 
+                                   labels=c("<0.2","0.2-0.3","0.3-0.4",">0.4"))
+  dat1$pH_change_3catagory <- cut(dat1$pH_change, breaks=c(-Inf ,0.2 ,0.4, Inf), 
+                                  labels=c("<0.2","0.2-0.4",">0.4"))
+  dat1$co2_change_3catagory <- cut(dat1$co2_change, breaks=c(-Inf ,500 ,900, Inf), 
+                                  labels=c("<500","500-900",">900"))
+  dat1$total_study_length_catagory <- cut(dat1$total_study_length, breaks=c(-Inf,7,30,Inf), 
+                                   labels=c("<7","7-30",">30"))
+ 
+```
+  
+  
+## rate temp change
+get rate taking into account total study length and change in temp
+```{r rate_temp}
+##  
+dat1$degree_per_day_change_total<-dat1$temp_change/dat1$total_study_length
+dat1$degree_per_day_change_acclimation<-dat1$temp_change/dat1$acclimation.lengthdays
+```
+
+## get factorial exp
+add column if factorial design with both temp and CO2 manipulation - study has all three
+```{r factorial}
+mess1<-dat1 %>%   # names(dat1)
+  dplyr::select(Original.ref.number,Stressor.studied) %>% 
+  mutate(mes=paste(Original.ref.number,Stressor.studied))  %>% 
+  filter(!duplicated(mes)) %>% 
+  arrange(Original.ref.number) %>% 
+  group_by(Original.ref.number) %>% 
+  summarise(Factorial_experiment=n())  %>% 
+  filter(Factorial_experiment>2) %>% 
+  mutate(factorial="yes") %>% 
+  dplyr::select(Original.ref.number,factorial)
+
+dat1 <- dat1 %>% 
+  left_join(mess1) 
+
+```
+
+## Hedges_g
+Calc from Koricheva et al. 2013 book
+```{r hedgesg}
+ne<-dat1$experimental_sample.size # experimental sample size
+nc<-dat1$control_sample.size   # contorl sample size     mes<-dat1[dat1$experimental_sample.size<2,]
+sde<-dat1$experimental_variation_good # sd exp
+sdc<-dat1$control_variation_good # sd con 
+me<-dat1$experimental_mean.response # mean exp
+mc<-dat1$control_mean.response # mean con 
+###
+j<-1-(3/(4*(ne+nc-2)-1))     # checked and it works like 1-(3/((4*(3+3-2))-1))
+sdp<-sqrt(((ne-1)*(sde^2)+(nc-1)*(sdc^2))/ne+nc-2) # psych::describe(nc)  
+hedgesG<-(((me)-(mc))*j)/sdp 
+hedgesG_variation<-((ne+nc)/(ne*nc))+(hedgesG^2/(2*(ne+nc)))  
+### correct for effect direction - if negative switch
+dat1$hedgesG<-hedgesG
+dat1$hedgesG[dat1$effect.direction=="negative"]<-dat1$hedgesG[dat1$effect.direction=="negative"]*-1
+dat1$hedgesG_variation<-hedgesG_variation
+# psych::describe(hedgesG, na.rm = TRUE) 
+# psych::describe(hedgesG_variation, na.rm = TRUE) 
+```
+
+## log ratio
+```{r log_rat}
+ne<-dat1$experimental_sample.size # experimental sample size
+nc<-dat1$control_sample.size   # contorl sample size     mes<-dat1[dat1$experimental_sample.size<2,]
+sde<-dat1$exp_variation_rate # sd exp
+sdc<-dat1$con_variation_rate # sd con 
+me<-dat1$exp_mean_rate # mean exp
+mc<-dat1$con_mean_rate # mean con 
+#
+log_ratio<-log(me)-log(mc)
+is.na(log_ratio)<- !is.finite(log_ratio) 
+# mes<-log_ratio[complete.cases(log_ratio)]
+log_ratio_variation<-(sde^2/(ne*me^2))+(sdc^2/(nc*mc^2))
+is.na(log_ratio_variation)<- !is.finite(log_ratio_variation) 
+#
+dat1$log_ratio<-log_ratio
+dat1$log_ratio_variation<-log_ratio_variation
+mes<-dat1[dat1$log_ratio_variation>100 & complete.cases(dat1$log_ratio_variation),]
+mes1<-mes[,c(1,2,7,8,9,12,16,17,18,20,24,25,26,57,58,93:94)]  # names(mes)
+
+# psych::describe(log_ratio, na.rm = TRUE) 
+ #psych::describe(log_ratio_variation, na.rm = TRUE) 
+```
+
+## Activ_energy
+Calcualte activation energy and equivalent for CO2 exp
+there are some rows lost becuase of incompatablity with AE formulas, but very few
+```{r desc}
+
+ k1<-.00008617734  # constant for AE calculation  - Boltzmann constant
+
+temp_exp_k1<-(k1*(273+dat1$experimental_temp.level..degrees.))^-1
+ temp_con_k1<-(k1*(273+dat1$control_temp.level))^-1
+ ### should we use _postitive?
+ dat1$AE_9eV_temp<-log(dat1$experimental_mean.response/dat1$control_mean_response) / ( temp_exp_k1- temp_con_k1)
+ dat1$AE_9eV_temp_pos_response<-log(dat1$experimental_mean_response_positive/dat1$control_mean_response_positive) / ( temp_exp_k1- temp_con_k1)
+ # hist(dat1$AE_9eV_temp_pos_response)   hist(temp_exp_k1- temp_con_k1)
+ #  psych::describe(dat1$experimental_mean.response/dat1$control_mean_response)
+ ## propogate error
+ err<-sqrt((dat1$experimental_variation_good_positive/dat1$experimental_mean.response)^2
+           +(dat1$control_variation_good_positive/dat1$control_mean_response)^2)
+ dat1$AE_9eV_temp_variation<-log((err/(temp_con_k1 - temp_exp_k1))+1)  # hist(dat1$AE_9eV_temp_variation)
+ #  correct for direction ###
+ dat1$AE_9eV_temp[dat1$effect.direction=="negative"]<-dat1$AE_9eV_temp[dat1$effect.direction=="negative"]*-1
+ dat1$AE_9eV_temp_pos_response[dat1$effect.direction=="negative"]<-dat1$AE_9eV_temp_pos_response[dat1$effect.direction=="negative"]*-1
+ #  hist(dat1$AE_9eV_temp) # hist(dat1$AE_9eV_temp_pos_response)  
+ #################
+ ######   for CO2        names(dat1)
+# experimental_pCO2.level..µatm..ppm.-control_pCO2.level..µatm..ppm. 
+chh<- 100  #  !!!! number to reduce number of change,   if  needed  !!!!!!!!!
+ ### should we use _postitive?     hist(dat1$co2_change/chh)
+ dat1$AE_9eV_CO2ppm<-log(dat1$experimental_mean.response/dat1$control_mean_response) / (dat1$co2_change/chh)
+ dat1$AE_9eV_CO2ppm_pos_response<-log(dat1$experimental_mean_response_positive/dat1$control_mean_response_positive) / (dat1$co2_change/chh)
+ dat1$AE_9eV_CO2ppm_variation<-log((err/( dat1$co2_change/chh))+1)  # hist(dat1$co2_change/chh)
+ #   hist(err[err<5])   # hist((err/( dat1$co2_change/chh))+1)
+ #  hist(dat1$AE_9eV_CO2ppm)    # hist(dat1$AE_9eV_CO2ppm_pos_response)  # hist(dat1$AE_9eV_CO2ppm_variation)
+ #  psych::describe(dat1$experimental_mean_response_positive/dat1$control_mean_response_positive)
+ 
+ #  correct for direction ###
+ dat1$AE_9eV_CO2ppm[dat1$effect.direction=="negative"]<-dat1$AE_9eV_CO2ppm[dat1$effect.direction=="negative"]*-1
+ dat1$AE_9eV_CO2ppm_pos_response[dat1$effect.direction=="negative"]<-dat1$AE_9eV_CO2ppm_pos_response[dat1$effect.direction=="negative"]*-1
+ 
+ 
+ ##### remove mean_fixes and other columns    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#   switch variations
+dat1 <- dat1 %>%     # names(dat1)
+  mutate(experimental_variation=experimental_variation_good,control_variation=control_variation_good) %>% 
+  dplyr::select(-mean_fix,-mean_fix2, -fix.rates, -experimental_variation_good, -control_variation_good)
+```
+
+## combine dat and study
+combing dat1 with study info. from stud table
+#### now dat2-dat3
+```{r desc}
+dat1$Letter.ID.within.ref<-as.character(dat1$Letter.ID.within.ref)
+dat1$Letter.ID.within.ref[is.na(dat1$Letter.ID.within.ref)]<-"a"
+#  mes<-stud2$ref_letter_id
+dat2 <- dat1 %>%  
+  mutate_at(vars(Letter.ID.within.ref), funs(tolower))  %>%
+  unite(ref_letter_id, Original.ref.number , Letter.ID.within.ref, sep="_", remove=F) %>% 
+  left_join(stud3)
+#  !!!! fix join, make sure rows stay same
+mes<-stud2[is.na(stud2$Stressors.studied_study),]
+mes<-stud2[duplicated(stud2$ref_letter_id),]
+mess<-stud2[stud2$Original.ref.number %in% mes$Original.ref.number ,]   # stud2[]
+#  mes3<-dat2[dat2$Original.ref.number==920,]     mes3<-ref[ref$Original.ref.number==920,]
+#  mes2<-stud2[ stud2$ref_letter_id=="920_a",]
+#  unique(stud2$ref_letter_id)      
+#  unique(dat2$ref_letter_id)
+########################################################
+###   ******   to do,  join with traits   ***** names(dat2)  names(trait)   names(dat3) 
+dat3 <- dat2 %>% 
+  left_join(trait2, by=c("species.ID" = "Species.ID"))
+```
+
+## tidy_dat3
+tidy and check dat3
+```{r tidy_2}
+dat3 <- dat3 %>% 
+## remove mean resonces < 0
+  filter(!(Stressor.studied=="Warming" & temp_change<=0)) %>% 
+  filter(!(Stressor.studied=="Acidification" & pH_change<=0)) %>% 
+  filter(!(Stressor.studied=="Acidification" & co2_change<=0))
+#     psych::describe(dat3$pH_change)
+## check tmeps
+#  mes<-dat3[dat3$temp_dif<0  & dat3$Stressor.studied != "Acidification"  & complete.cases(dat3$temp_dif),]
+#   mes1<-filter(mes,!duplicated(Original.ref.number))
+## check ph
+#   mes<-dat3[dat3$pH_dif>0  & dat3$Stressor.studied != "Warming"  & complete.cases(dat3$pH_dif),]
+#   mes1<-filter(mes,!duplicated(Original.ref.number))
+###############  export  needed fixes
+#  setwd("/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export")
+#   write.table(mes1,"ph_fixes.csv", sep=",",row.names=F)
+########### add bleaching measure. % loss of symbiodinium       names(dat3)
+#  to complicated many percents loss greater than 10, bleaching catagory only 38 rows and 2/3 not 1-7 catagories
+#mes<-dat3[dat3$variable.label.fix=="bleaching",]
+#unique(dat3$variable.label.fix.2)
+#unique(dat3$variable.label.fix)  #  "symbiont density" , "bleaching" 
+#dat3$bleach<-NA
+# for bleaching
+#dat3$bleach[dat3$variable.label.fix=="bleaching"]<-
+# for sym dens
+#  dat3$bleach[dat3$variable.label.fix=="symbiont density"]<- 1-(dat3$experimental_mean.response[dat3$variable.label.fix=="symbiont density"]/dat3$control_mean.response[dat3$variable.label.fix=="symbiont density"])
+  
+```
+
+## global-layer_data
+add data from global layers
+script for this will be in maps_extract script
+#### now dat4
+```{r desc}
+
+vel1<-vel[,c(2:3,7,9,11,13,15)]
+vel1<-dplyr::rename(vel1,vel_average_sst=average_sst.1,vel_linear_change=linear_change.1,vel_spatial_gradient=spatial_gradient.1,
+                    vel_angle=angle.1,vel_velocity_magnitude=velocity_magnitude.1)
+##    names(dat3) names(land)   names(vel1)    names(abiotic)
+dat4 <- dat3 %>% 
+  left_join(abiotic[,c(1,7:length(names(abiotic)))], by="unique_study_loc") %>% 
+  left_join(land[,c(1,7:16)], by="unique_study_loc") %>% 
+  left_join(vel1) 
+#####  get difference between high lt temp and experiment
+# names(dat4)
+dat4$exp_temp_minus_SST_high_Lt_max<-dat4$experimental_temp.level..degrees. -  dat4$Present.Surface.Temperature.Lt.max
+dat4$exp_temp_minus_SST_high_Lt_max_3catagory <- cut(dat4$exp_temp_minus_SST_high_Lt_max, breaks=c(-Inf,2,4,Inf), 
+                                  labels=c("<2","2-4",">4"))
+```
+
+## tidy_dat5
+tidy table to include only data used in meta-analysis
+```{r tidy_dat5}
+# names(names_final_dat)    names_final_dat$Columns.required   names(dat4)
+dat5 <- dat4 %>% 
+  select(one_of(names_final_dat$Columns.required)) %>% 
+  rename_at(vars(names_final_dat$Columns.required), ~names_final_dat$Colums.required.fix)
+  
+
+```
+
+
+## export data
+
+```{r expsort}
+#  export tabel      names(dat4)
+
+# use  save_file set in universal variables
+write.table(ref1, paste(save_file,"references_fixed.csv", sep=""), sep=",",row.names=F)
+write.table(dat3, paste(save_file,"data_for_analysis.csv", sep=""), sep=",",row.names=F)   ## names(dat3)
+write.table(dat4, paste(save_file,"data_for_analysis_withabiotic.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
+
+write.table(dat5, paste(save_file,"meta-analysis_used_data.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
+# also to shared folder  -   save_file_shared
+write.table(dat5, paste(save_file_shared,"meta-analysis_used_data.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
+
+
+write.table(trait2, paste(save_file,"traits_fixed.csv", sep=""), sep=",",row.names=F)
+write.table(stud3, paste(save_file,"study_fixed.csv", sep=""), sep=",",row.names=F)  # stud2
+```
+
+
+## desc
+
+```{r desc}
+
+```
+
+
+
+
