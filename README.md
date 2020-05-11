@@ -22,3 +22,5 @@ Scripts associated with cnidarian meta-analysis on experiments testing effects o
       estimates increases in temp and CO2 needed for impacts
 
 ## product 2 scripts - 
+
+coral_global_human_impact.Rmd - most of scripts used for this manuscript
