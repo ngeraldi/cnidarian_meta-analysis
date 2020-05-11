@@ -48,6 +48,9 @@ meta-analysis data and others
 ```{r data}
 
 dat<-read.table(paste(dat_file,"meta-analysis_used_data.csv",sep="" ), sep=",",header=T)   ## na
+
+mhw<- read.table(paste(dat_file,"MHW projections.csv",sep="" ), sep=",",header=T)  
+ # names(mhw) 
 # names(dat)
 ```
 
@@ -58,11 +61,19 @@ keep only calcyfying corals and remove deep sea corals
 
  sdat<- dat %>% #  names(sdat)   names(dat)   unique(dat$Deep.sea.)
    filter(Taxa_catagory=="Calcifying coral")  %>%  ##  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   filter(Deep.sea.=="No" | is.na(Deep.sea.))  %>% 
-   mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
-   mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm)
+   filter(Deep.sea.=="No" | is.na(Deep.sea.))  %>%  ##!!!!!!!!!!!!!!!!
+  filter(Latitude.decimal.degrees <= 35) %>%   #!!!!!!!!!!!!!!!! remove a few norther studies
+  #filter(Trait.type!= "growth") %>%   # !!!!!!!!!! remove growth - very few aftre corrections
 
+   mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
+   mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
+     
+   filter(co2_change <= 800 | is.na(co2_change)) %>% #  # !!!!!!!!!!!!!!!!limit to realistic changes in CO2
+    droplevels() 
    
+mhw<- mhw %>%   # names(mhw)
+  mutate(Global.Warming_plus_mhw= Global.Warming_recent + Maximum.Annual.Intensity.of.Marine.Heatwaves)
+
 ```
 
 
@@ -80,6 +91,7 @@ op <- data.frame(Estimate=integer(),
                  variable=character(),
                  response=character(),
                  sample_size=integer(),
+                 num_of_studies=integer(),
                  stringsAsFactors=FALSE)
 
 #  set up variables and maximium AE
@@ -156,6 +168,7 @@ for (j in c(1,2)) {   # for stressor
         op[w,8]<-resp[i]
         op[w,9]<-qqq
         op[w,10]<-length(row.names(sdat2))
+        op[w,11]<-length(unique(sdat2$Reference.ID))
 
       w<-w+1
   }
@@ -163,6 +176,8 @@ for (j in c(1,2)) {   # for stressor
  #  }, error=function(e){})
 }
 
+
+#   output table is op
 ```
 
 
@@ -222,9 +237,9 @@ pp<-forest(m1)
 
 
 ## get summary
-mes<-sdat2 %>% 
-  group_by(Original.ref.number) %>% 
-  mutate(study_num = as.character(match(Original.ref.number, unique(Original.ref.number))))  %>%
+mes<-sdat2 %>%  # names(sdat2)
+  group_by(Reference.ID) %>% 
+  mutate(study_num = as.character(match(Reference.ID, unique(Reference.ID))))  %>%
   ungroup() %>% 
   group_by(study_num) %>% 
   dplyr::summarise(mean_st = mean(yi)) %>% 
@@ -235,178 +250,246 @@ mes<-sdat2 %>%
 
 ```{r rcp_proj}
 ## make table with rcp's and temp increase
-rcp <- data.frame("RCP" = c(2.6,4.0,6.0,8.5), "RCP_temp" = c(1,1.8,2.2,3.7), "RCP_co2"=c(63,173,276,490))
+rcp <- data.frame("RCP" = c(2.6,4.0,6.0,8.5), "RCP_temp" = c(1,1.8,2.2,3.7), "RCP_co2"=c(63,173,276,490)) # when using rcp means 
+rcp_co<- data.frame("RCP" = c(2.6,4.5,6.0,8.5), "rcp_co2"=c(63,173,276,490)) 
+# now using MHW data  names(mhw)   names(rcp)
+rcp<- mhw %>% 
+    filter( Percentile.of.SST == "90th") %>% 
+    mutate(rcps=sub(" .*", "", rcps)) %>% 
+    filter(rcps != "Historical") %>% 
+    select(rcps, Year,Maximum.Annual.Intensity.of.Marine.Heatwaves,Global.Warming_plus_mhw) %>% 
+    unite(rcp_years, rcps:Year, sep="_", remove=FALSE) %>% 
+    pivot_longer(c(Maximum.Annual.Intensity.of.Marine.Heatwaves,Global.Warming_plus_mhw), names_to = "Projection_type", values_to = "projected_temp") %>% 
+    unite(rcp_years_proj, rcps:Projection_type, sep="_", remove=FALSE) %>% 
+    mutate(RCP=as.numeric(gsub("RCP","",rcps) ) ) %>%  # clean rcps remove "RCP"
+    left_join(rcp_co) %>% # add in RCP - co2 add latter
+    arrange(Projection_type, RCP, Year)
+
+
 ## calulate 
 # names(rcp_proj)
+
+#rcp_proj <- rcp[rep(op, times=length(rownames(rcp)) ) ,]
+
+rcp_proj <-data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))
     
-rcp_proj<- rbind(op,op,op,op) %>% 
-  mutate(RCP=rep(rcp$RCP, each=36)) %>% 
+rcp_proj <-  data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))  %>%  # should be number of rcps?  op - out put of model
+  dplyr::select (-i) %>% 
+  mutate(rcp_years_proj=rep(rcp$rcp_years_proj, each=length(rownames(op)))) %>%  # add to then join, just do one step?
   left_join(rcp)  %>%   # join to rcp data
-  mutate(rcp_change=if_else(response=="temperature",RCP_temp,RCP_co2)) %>% # make change depending on variable-temp or co2
+  mutate(rcp_change=if_else(response=="temperature",projected_temp,rcp_co2)) %>% # make change depending on variable-temp or co2
   mutate(CI=ci.ub-ci.lb) %>% # calc. confidence interval
   # to go from temp to AE used linear realtinoship between difference in 1/kt and difference in degree C use 0.128710787*(temp deg.C)-0.003138539
-  mutate(relative_prop=if_else(response=="temperature", -0.128710787*RCP_temp-0.003138539, RCP_co2/100)) %>%  # make relative to change
+  mutate(relative_prop=if_else(response=="temperature", -0.128710787*projected_temp-0.003138539, rcp_co2/100)) %>%  # make relative to change
   mutate(mean_prop_estimate=exp(relative_prop*Estimate)) %>% # get projected mean estimate
-  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI
+  
+  #calculate Confidence interval
+ #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
+    mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
+   # mutate(CI_estimate= mean_prop_estimate + first_ci ) %>%  # orignial diff + new mean_AE
+  
   # calc if CI overlaps with 0
-  mutate(Sigificant=if_else( ci.lb > 0,"yes","no"))    # does 95% CI overlap with 0
+  mutate(Sigificant=if_else( mean_prop_estimate+ abs(CI_estimate) < 1,"yes","no"))  %>%   # does 95% CI overlap with 0
+    # remove extra co2 measures because only 3 rcps hsould = 388 rows
+  unite(co2_remove, c(Estimate:sample_size,rcp_change,CI), sep="_", remove=FALSE) %>% 
+  dplyr::distinct(co2_remove, .keep_all = TRUE)
   
-  
-  # get mean AE that CI cross zero
- i<-1
- j<-1
 
-  
-for (j in c(1:length(op$Estimate))) {
-  inc <- 0.1  
-  # run until prop_CI_ub_AE is <1
-while (prop_CI_ub_AE <= 1) {
-print(i)
-  
-  ## get AE of increase (stepping by 0.1 degree C)
-  AE_increm<--0.128710787*inc-0.003138539
-  ## add increase to AE estimate from model
-  prop_mean_AE<- exp(op$Estimate[j] * AE_increm)
-  prop_CI_ub_AE<- exp(op$ci.ub[j] * AE_increm)
-# add next step to increase degree C  
-inc = inc+0.1
 
-}
-  
-} 
 
 
 ```
 
 
-## estimate temp&CO2
-calculate temperature or CO@ increase that CI no longer crosses 0 or is significant
+## setup estimate temp&CO2
+create empty dataframe
 ```{r est_temp}
-op2<-op %>% 
-  mutate(temp_increment=-1000,prop_mean_AE=-1000, prop_CI_AE=-1000,  finding="None")
+op2<-op %>%  # was op changed march   names(op2)
+  mutate(temp_inc_mean_less_95=-1000, prop_mean_AE__ci_less_1=-1000, temp_inc_ci_less_1=-1000, temp_increment=-1000,prop_mean_AE=-1000, prop_CI_AE=-1000,  finding="None")
   # get mean AE that CI cross zero
- j<-30
- s<-seq(0.1,10,by=0.1)  # length(s)
- temp_l<-length(s[s<=5]) #length tabel should be if nothing removed
- co2_l<-length(s[s>=1]) 
- s_int<-seq(1,100,by=1)  # length(s_int)
+  max_degree_change<-10  # should be 10
+  s<-seq(0.01,max_degree_change,by=0.01)  # length(s)
+  
+ #temp_l<-length(s[s<=max_degree_change]) #length table should be if nothing removed
+ #co2_l<-length(s[s>=1]) 
+ #s_int<-seq(1,100,by=1)  # length(s_int)
 dum <- data.frame("increment" = s+1000, "prop_mean_AE" = s+1000,"prop_CI_AE" = s+1000) 
-  
+``` 
 
-for (j in c(1:length(op2$Estimate))) {
+
+## run estimate loop
+calculate temperature or CO@ increase that CI no longer crosses 1 or is significant
+```{r est_temp_run}
+
+# c(1:length(op2$Estimate))
+for (j in c(1:length(op2$Estimate)) ) {
   
-  # create table of increase incremental change
+  # create table of increase incremental change  - 1-1000 steps, increment i/100
   ## TO CHECK need to keep actual seq() in for loop, messes up when use variable name (s10)!!!
-  for (i in seq(1,100,by=1)) {
-   #  i<-43
-  ii<-i/10
+  for (i in seq(1,length(s),by=1)) {
+   #  i<-43  j<-30
+  ii<-i/100  # determein degree incremnt step - 
   ## add increase to AE estimate from model
   dum$increment[i]<-ii
   ## account for difference in sign between reponses
       if (op2$response[j] == "temperature"){
-      ## get AE of increase (stepping by 0.1 degree C)
+      ## get AE of increase (stepping by 0.1 degree C when ii=10 or ii - 0.001)
   KT_increm<- -0.128710787*ii-0.003138539
-  dum$prop_mean_AE[i]<- exp(op2$Estimate[j] * KT_increm)
-  dum$prop_CI_AE[i]<- exp(op2$ci.lb[j] * KT_increm)  # lower bound for Temp
+ # first_ci_old<-(  exp(op2$ci.lb[j] * -0.128710787*0.01  -0.003138539)  ) -  (    exp(op2$Estimate[j] * -0.128710787*  0.01  -0.003138539  )  )
+  ## use original mean and CI from model to get CI in AE
+    first_ci<-(  exp(op2$ci.lb[j] * -0.128710787  -0.003138539)  ) -  (    exp(op2$Estimate[j] * -0.128710787  -0.003138539  )  )
   
+  
+  dum$prop_mean_AE[i]<- exp(op2$Estimate[j] * KT_increm)
+  # dum$prop_CI_AE[i]<- exp(op2$ci.lb[j] * KT_increm)  # lower bound for Temp - used before Mar 2020
+  
+  dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] + first_ci   # orignial diff + new mean_AE
+  #dum$prop_CI_AE[i]<- (exp(  (op2$ci.ub[j]-op2$Estimate[j]) * KT_increm) ) + dum$prop_mean_AE[i] #  - bad
       } else {
+        ## for CO2!!!
   dum$prop_mean_AE[i]<- exp(op2$Estimate[j] * ii) # increments relative to 100 atm (ie 110 uatm = 1.1)
-  dum$prop_CI_AE[i]<- exp(op2$ci.ub[j] * ii)  #  upper bound for CO2
+   first_ci<-(exp(op2$ci.ub[j]) - (exp(op2$Estimate[j])))
+  dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] + first_ci #  upper bound for CO2
               }
   ### for checks, can remove
   #print(i): print(dum$increment[i]): print(KT_increm): print(dum$prop_mean_AE[i]): print(dum$prop_CI_AE[i])
   
   }  # end of dum creation loop
   
+  
   ## created table now check for parameters
   ## first for temp then CO2
   ## for temp
   if (op2$response[j]=="temperature"){
-    dum2<-dum[dum$increment<=5,] ## limit findings to increments 0.1 to 5
+    dum2<-dum[dum$increment<=max_degree_change,] ## limit findings to increments 0.1 to max
+    temp_l<-length(dum2$increment)
      # find when prop_CI_ub_AE is <1
-    less1<-dum2[dum2$prop_CI_AE <= 1  , ] # set cutoff
+    less1<-dum2[dum2$prop_CI_AE <= 1  , ] # set cutoff- always 1
+ 
     #more1<-dum2[dum2$prop_CI_AE >= 1, ]
-  # if prop_CI_AE becomes less than 1 get temp increment -- length(less1)<50 means nothing was removed from table
-        if (length(less1$increment) < temp_l & length(less1$increment) > 0){
+    
+  # if prop_CI_AE becomes less than 1 get temp increment -- length(less1) <50 means nothing was removed from table
+        if (length(less1$increment) == temp_l & length(less1$increment) > 0){
             outp<-less1[1,] # get first row when become <1
-            answerp<-"temp_Significant change see CI for <=1"
+            answerp<-"temp alwasy significant, CI <=1"  # "temp_Significant change see CI for <=1"
         }
   
   
-  # if prop_CI_AE is alwasy less than 1 (length of orignial data) it is always significant, but then get temp. increase when prop_meanis < 0.95
-        if (length(less1$increment) == temp_l) {
-     less_mean_0.95<- dum2[dum2$prop_mean_AE <= 0.95, ]
-            if (length(less_mean_0.95$increment) < temp_l & length(less_mean_0.95$increment) >=1) { # check to see if went below 95%
-              outp<-less_mean_0.95[1,]
-              answerp<-"temp_Sig. CI always<0, see incremnt mean <=95%"
+  # if prop_CI_AE is alwasy greater than 1 (length of orignial data) it is always significant, but then get temp. increase when prop_meanis < 0.95
+        if (length(less1$increment) < temp_l) {
+     less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+            if (length(less_mean_0.95n$increment) < temp_l & length(less_mean_0.95n$increment) >=1) { # check to see if went below 95%
+              outp<-less_mean_0.95n[1,]
+              answerp<-"temp_Sig. CI , see incremnt mean <=95%"
             } else {                          # if never below 95%
               outp<-c(NA,NA,NA)
-              answerp<-"temp_Sig. CI always<0, 9%% unknown"
+              answerp<-"temp_Sig. CI , 95% unknown"
                     }
-          } # end of temp inc equal
+          } # end of temp inc <
     
     # if prop_CI_AE alwasy greater than 1 - not sensitive
         if (length(less1$increment) == 0) {
-       more_mean_0.95<- dum2[dum2$prop_mean_AE <= 0.95, ]
-            if (length(more_mean_0.95$increment) < temp_l & length(more_mean_0.95$increment) >=1) { # check to see if went below 95%
-              outp<-more_mean_0.95[1,]
-              answerp<-"temp-CI alwasy >1, incremnt mean <=95%"
+       more_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+            if (length(more_mean_0.95n$increment) < temp_l & length(more_mean_0.95n$increment) >=1) { # check to see if went below 95%
+              outp<-more_mean_0.95n[1,]
+              answerp<-"temp-CI always >1, increment mean <=95%"
             } else {                          # if never below 95%
               outp<-c(NA,NA,NA)
-              answerp<-"temp-CI alwasy >1, unknown 95%"
+              answerp<-"temp-CI always >1, unknown 95%"
                     }
           } # end of temp inc equal
+    
+    #  get increment when mean prop become < or = 0.95
+      lessninefive<-dum[dum$prop_mean_AE <= 0.95  , ] 
+     if (length(lessninefive$increment) > 0){
+            mean_95p<-lessninefive[1,1] # get first row when become <1
+     } else {    
+      mean_95p<-NA }
+    
+       #  get increment when ci prop becomes <= 1
+      less1_all<-dum[dum$prop_CI_AE <= 1  , ] # set cutoff
+     if (length(less1_all$increment) >= 1){
+            ci_less_1<-less1_all[1,1] # get first row when become <1
+              prop_when_ci_less_1<-less1_all[1,2]
+     } else {    
+            ci_less_1<-NA 
+            prop_when_ci_less_1<-NA  }
+    
+    
   } #end of temp if
+  ############################################################
   ##############################
   # for CO2 !!!!!!!!!!!!
   if (op2$response[j]=="CO2"){    
-    dum2<-dum[dum$increment>=1,] ## limit findings to increments 1 to 10
-    
+    dum2<-dum[dum$increment>=0,] ## limit findings to increments 1 to 10
+    co2_l<-length(dum2$increment)
          # find when prop_CI_ub_AE is <1
   less1<-dum2[dum2$prop_CI_AE <= 1  , ]# set cutoff
   # if prop_CI_AE becomes less than 1 get temp increment -- length(less1)< co2_l means nothing was removed from table
-   if (length(less1$increment)< co2_l & length(less_mean_0.95$increment) >=1){
+   if (length(less1$increment) == co2_l & length(less1$increment) >0){
    outp<-less1[1,] # get first row when become <1
    answerp<-"CO2-Sig. change, see CI when it <=1"
       }
   
   # if prop_CI_AE is alwasy less than 1 (length of orignial data) it is always significant, but then get temp. increase when prop_meanis < 0.95
-   if (length(less1$increment) == co2_l) {
-     less_mean_0.95<- dum2[dum2$prop_mean_AE <= 0.95, ]
-     if (length(less_mean_0.95$increment) < co2_l & length(less_mean_0.95$increment) >=1) { # check to see if went below 95%
-   outp<-less_mean_0.95[1,]
-   answerp<-"CO2-Sig,CI alwasy <1, mean became <=95%"
+   if (length(less1$increment) < co2_l) {
+     less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+     if (length(less_mean_0.95n$increment) < co2_l & length(less_mean_0.95n$increment) >0) { # check to see if went below 95%
+   outp<-less_mean_0.95n[1,]
+   answerp<-"CO2-Sig,CI always <1, mean became <=95%"
        } else {                          # if never below 95%
     outp<-c(NA,NA,NA)
-    answerp<-"CO2-Sig.CI alwasy <1, mean never"
+    answerp<-"CO2-Sig.CI always <1, mean never"
       }
    } # end of inc
   
       # if prop_CI_AE alwasy greater than 1 - not sensitive
         if (length(less1$increment) == 0) {
-       more_mean_0.95<- dum2[dum2$prop_mean_AE <= 0.95, ]
-            if (length(more_mean_0.95$increment) < co2_l & length(more_mean_0.95$increment) >=1) { # check to see if went below 95%
-              outp<-more_mean_0.95[1,]
-              answerp<-"co2-CI alwasy >1, incremnt mean <=95%"
+       more_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+            if (length(more_mean_0.95n$increment) < co2_l & length(more_mean_0.95n$increment) >0) { # check to see if went below 95%
+              outp<-more_mean_0.95n[1,]
+              answerp<-"co2-CI always >1, increment mean <=95%"
             } else {                          # if never below 95%
               outp<-c(NA,NA,NA)
-              answerp<-"co2-CI alwasy >1, unknown 95%"
+              answerp<-"co2-CI always >1, unknown 95%"
                     }
           } # end of co2 inc equal
+  
+      #  get increment when mean prop become < or = 0.95
+      lessninefive<-dum[dum$prop_mean_AE <= 0.95  , ] 
+     if (length(lessninefive$increment) > 0){
+            mean_95p<-lessninefive[1,1] # get first row when become <1
+     } else {    
+      mean_95p<-NA }
+    
+       #  get increment and AE prop when ci prop becomes <= 1
+      less1_all<-dum[dum$prop_CI_AE <= 1  , ] # set cutoff
+     if (length(less1_all$increment) > 0){
+            ci_less_1<-less1_all[1,1] # get first row when become <1
+            prop_when_ci_less_1<-less1_all[1,2]
+     } else {    
+            ci_less_1<-NA 
+            prop_when_ci_less_1<-NA  }
+  
+  
   
   }  #end of co2 if
   
  ###### end of calc
   
   
-    #out put to op2
-  op2[j,11:13]<-outp
-  op2[j,14]<-answerp
+    #out put to op2  names(op2)
+  op2[j,(ncol(op2)-3):(ncol(op2)-1)]<-outp
+  op2[j,ncol(op2)]<-answerp
+  op2[j,ncol(op2)-4]<-ci_less_1
+  op2[j,ncol(op2)-5]<-prop_when_ci_less_1
+  op2[j,ncol(op2)-6]<-mean_95p
+  
   ## clear outp
   outp<-c(222,222,222)
-  
-  
-  
+  ci_less_1<-222
+  prop_when_ci_less_1<-222
+  mean_95p<-222
 } 
 
 ```
@@ -417,21 +500,49 @@ for (j in c(1:length(op2$Estimate))) {
 ```{r export}
 
 #### export meta-analysis summary table to shared folder
-    write.table(op, paste(save_file_shared,"meta-analysis_summary_github.csv",sep=""), sep=",",row.names=F)
+    write.table(op, paste(save_file_shared,"meta-analysis_summary_mar_2020_github.csv",sep=""), sep=",",row.names=F)
 
 #### export rcp projection table to shared folder
-    write.table(rcp_proj, paste(save_file_shared,"rcp_projections_from_meta.csv",sep=""), sep=",",row.names=F)
+    write.table(rcp_proj, paste(save_file_shared,"mhw_rcp_projections_from_meta.csv",sep=""), sep=",",row.names=F)
     
     #### export meta-analysis summary table to shared folder
-    write.table(op2, paste(save_file_shared,"meta-analysis_summary_nov19_with_future.csv",sep=""), sep=",",row.names=F)
+    op2.2 <- op2 %>% 
+      select(-finding)
+    
+    write.table(op2.2, paste(save_file_shared,"meta-analysis_summary_mar2020_with_future.csv",sep=""), sep=",",row.names=F)
 ```
 
 
 
-## desc
+## map of studies
 
-```{r desc}
+```{r map}
+##########       map of corals with latitude frequnce      #############################
+library(mapdata)
+library(maps)
 
+mdat<- sdat %>%   # names(sdat)
+  mutate(unique_study_loc=paste(Reference.ID,Latitude.decimal.degrees, Longitude.decimal.degrees., sep="_")) %>% 
+  filter(!duplicated(unique_study_loc))  %>%   # from 468 to 301
+  dplyr::select(Latitude.decimal.degrees, Longitude.decimal.degrees.) 
+
+par(fig=c(0,0.85,0,1), xpd=F)
+maps::map("worldHires",xlim = c(-180,180), ylim = c(-85,85),fill=T,col="gray", border=F,
+     cex.lab=1, mar=c(3,5,0,2))
+map.axes(lty=1.2)
+points(mdat$Longitude.decimal.degrees., mdat$Latitude.decimal.degrees, cex=.7)
+mtext("Longitude", SOUTH<-1, line=-5, adj=.42,outer=TRUE,cex=1)
+mtext("Latitude", WEST<-2, line=-1.2, adj=0.5,outer=TRUE,cex=1)
+par(fig=c(0.83,1,0.237,0.765), mar=c(0,.5,0,1), new=TRUE)
+h<-hist(mdat$Latitude.decimal.degrees,plot=F)
+hh<-c(0,0,0,0,h$counts,0,0,0)  #  c(0,0,h$counts,0)
+barplot(hh,width=1,horiz=T, beside=T,xlim=c(0,100),
+        space=0, las=1)   # names.arg = hh$mids
+axis(side=2, at=c(2,7,12), labels=c(-50,0,50),las=0)
+box(lty=1.2)
+mtext("Locations", SOUTH<-1, line=-5.0, adj=.95,outer=TRUE,cex=1)
+
+## save to 
 ```
 
 

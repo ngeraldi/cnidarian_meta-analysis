@@ -72,7 +72,14 @@ corr1<-openxlsx::read.xlsx(paste(dat_file2,"Corrections_SK_28-02-2018.xlsx", sep
 corr2<-openxlsx::read.xlsx(paste(dat_file2, "Corrections_SK_28-02-2018.xlsx", sep="" ), startRow=1,sheet = 2, check.names=T)
 corr1<-mutate_all(corr1, funs(tolower)) # make all column names lower case  -- always do this for any meta-analysis**
 corr2<-mutate_all(corr2, funs(tolower))
-
+## newer corrections march 2020
+corr2_1<-openxlsx::read.xlsx(paste(dat_file2,"Column fix_File 1_mar2020.xlsx", sep="" ), startRow=1,sheet = 1, check.names=T)
+corr2_2<-openxlsx::read.xlsx(paste(dat_file2,"Column fix_File 2_mar2020.xlsx", sep="" ), startRow=1,sheet = 1, check.names=T)
+corr2_1<-mutate_all(corr2_1, funs(tolower)) # make all column names lower case  -- always do this for any meta-analysis**
+corr2_2<-mutate_all(corr2_2, funs(tolower))
+corr_temp<-openxlsx::read.xlsx(paste(dat_file2,"Temperature fix_file.xlsx", sep="" ), startRow=1,sheet = 1, check.names=T) # names(corr_temp)
+corr_temp<-corr_temp[,c(1:8,11,12,13)]
+  
 ### table to convert boxplot to SD ... get from publication 
 # source  - Wan_etal_2014
 wan<-read.table(paste(dat_file2,"Wan_etal_2014_T2.csv", sep=""), sep=",", header=T)
@@ -188,6 +195,12 @@ trait2<- trait1 %>%
   filter(!Species.ID==111)   # unaccepted, see above
 #  duplicated(trait1$Genus.species.fixed)
 
+
+```
+
+
+## tidy corals
+```{r calci_col}
 #######  add new columns to trait2 to identify calcifying corals     names(trait)    unique(trait2$Taxa)   names(corr1)
 trait2$calcifying<-"no"
 trait2$calcifying[trait2$Taxa=="Calcifying coral"]<-"yes" 
@@ -433,7 +446,7 @@ dat<-dat %>%
 
 ## new_catagories
 combine with corr tables to make new catagories for data
-#### now dat1
+now dat1
 ```{r new_cat}
 #########   add columns with new groupings from corr1    names(corr1)   names(dat)  unique(dat1$ITS.Symbiot.type)
 dat1<- dat %>% 
@@ -452,6 +465,10 @@ dat1<- dat %>%
 
 ## fix_pam
 add new column and correct pam entries
+
+variable.label.fix.2.fix_PAM is used for analysis down line !!!!!!!
+changed to Trait.type in tidy_dat5 !!!!!!!!!!
+
 ```{r fix_pam}
 ### add one more new column     unique(dat1$variable.label.fix)  unique(dat1$variable.label)  unique(corr1$variable.label)
 dat1$symbiont_response<-"no"
@@ -466,6 +483,86 @@ dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variab
 dat1$variable.label.fix.2.fix_PAM[dat1$variable.label.fix.2=="pam" & dat1$variable.unit=="cm-2"]<-"other"   #  unique(dat1$variable.unit)
 #  names(dat1)
 ```
+
+## fixes 2
+fixes March 2020 
+uses corr2_1 and corr2_2 imported sheets
+!!!!  variable.label.fix.2.fix_PAM will become Trait.type !!!!!
+```{r fix2}
+names(dat1)
+unique(dat1$variable.unit)
+unique(dat1$variable.type)
+unique(dat1$variable.label)
+
+## fix corr2_1 for names
+corr2_1 <- corr2_1 %>% # names(corr2_1)
+    dplyr::rename(Retriever=Extractor , Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type) %>% 
+    select(-Trait.units) %>% 
+    mutate(Original.ref.number = as.numeric(Original.ref.number))
+corr2_2 <- corr2_2 %>% # names(corr2_2)
+    dplyr::rename(Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type, variable.unit=Trait.units) %>% 
+    mutate(Original.ref.number = as.numeric(Original.ref.number)) %>% 
+    select(-Stressors.studied_study)
+corr_temp2 <- corr_temp %>% # names(corr_temp2)
+      dplyr::rename(Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type, variable.unit=Trait.units,
+                    effect.direction = Effect.direction, experimental_temp.level..degrees.=Experimental_temp.level.degrees, 
+                    experimental_sample.size=Experimental_sample.size,  experimental_mean.response= Experimental_mean.response_original) %>% 
+    mutate(Original.ref.number = as.numeric(Original.ref.number)) %>% 
+    select(-Stressors.studied_study, -variable.label.fix.2.fix_PAM)
+  
+
+
+
+#  if CaCO3 appears in "Traits.units" , change growth to calcification under trait.label  
+dat1.5 <- dat1 %>%    # names(dat1)
+    mutate_if(is.factor, as.character) %>% 
+  mutate_at(vars(Retriever,Stressor.studied , Study.type, variable.unit, variable.label.fix.2.fix_PAM), funs(tolower))  %>%
+  #  change variable.label to calcification if was growth and measured caco3 
+    mutate(variable.label.fix.2.fix_PAM=if_else(grepl("caco", variable.unit, ignore.case=TRUE) & variable.label.fix.2.fix_PAM == "growth", "calcification" , variable.label.fix.2.fix_PAM )) %>% 
+  # change variable.label to pam if Fv/Fm in variable.unit
+    mutate(variable.label.fix.2.fix_PAM=if_else(grepl("Fv/Fm", variable.unit, ignore.case=TRUE)   , "PAM" , variable.label.fix.2.fix_PAM )) %>% 
+  # corrections based on file 1- corr1_2
+    mutate_at(vars(Retriever,Stressor.studied , Study.type, variable.unit), funs(tolower))  %>%
+    left_join(corr2_1) %>%
+    mutate(variable.label.fix.2.fix_PAM=if_else(complete.cases(Trait.type.fix)   , Trait.type.fix , variable.label.fix.2.fix_PAM )) %>% 
+    mutate(variable.unit=if_else(complete.cases(Trait.units.fix)   , Trait.units.fix , variable.unit )) %>%
+    select (-Trait.type.fix , -Trait.units.fix) %>% 
+  # corrections based on file 2- corr2_2
+    left_join(corr2_2) %>%
+    mutate(variable.unit=if_else(complete.cases(Trait.units.fix)   , Trait.units.fix , variable.unit )) %>%
+    select ( -Trait.units.fix) %>%  ###   unique(dat1.5$variable.unit)
+  # other unit corrections
+    mutate(variable.unit=if_else(grepl("prey consumed h-1 cm-2", variable.unit)   , "prey consumed h-1 cm-2 ml-1" , variable.unit )) %>%
+    mutate(variable.unit=if_else(grepl("µmol electrons m-2 s", variable.unit)   , "µmol electrons m-2 s-1" , variable.unit )) %>% 
+    mutate(variable.unit=if_else(grepl("mol caco3", variable.unit) & Original.ref.number==258 &  variable.label.fix.2.fix_PAM=="respiration" , "umol O2 g-1 h-1" , variable.unit )) %>% 
+      mutate(variable.unit=if_else(grepl("net pmax", variable.unit) & Original.ref.number==772, "net pmax (o2 flux) cm2" , variable.unit )) %>% 
+        mutate(variable.unit=if_else(grepl("umol caco3 cm", variable.unit) & Original.ref.number==158, "umol caco3 cm-1 d-1" , variable.unit )) %>% 
+  
+         mutate(variable.unit=if_else(grepl("nmol ca mg spicules", variable.unit) & Original.ref.number==805, "nmol ca mg spicules h-1" , variable.unit )) %>% 
+  
+    mutate(variable.unit=gsub( "µ" , "u", variable.unit)) %>% #  
+  mutate(variable.unit=gsub( "μ" , "u", variable.unit)) %>%
+    mutate(variable.unit=gsub( "\\^" , "-", variable.unit)) %>% #  unique(dat1)
+  # temp corrections using names(corr_temp2)
+    left_join(corr_temp2) %>% 
+    mutate(experimental_temp.level..degrees.=if_else(complete.cases(Experimental_temp.level.degrees_fix)   , Experimental_temp.level.degrees_fix , experimental_temp.level..degrees. )) %>%
+      select(-Experimental_temp.level.degrees_fix) %>% 
+ # CO2 corrections
+    mutate(experimental_pCO2.level..µatm..ppm.=ifelse(experimental_pCO2.level..µatm..ppm. == 909.25 & Original.ref.number == 84, NA, experimental_pCO2.level..µatm..ppm.) ) %>% 
+    mutate(experimental_pCO2.level..µatm..ppm.=ifelse(experimental_pCO2.level..µatm..ppm. == 909.25 & Original.ref.number == 159, NA, experimental_pCO2.level..µatm..ppm.) ) %>% 
+    mutate(experimental_pCO2.level..µatm..ppm.=ifelse(experimental_pCO2.level..µatm..ppm. == 909.25 & Original.ref.number == 45, NA, experimental_pCO2.level..µatm..ppm.) ) 
+  
+  
+mes<- dat1.5 %>% 
+  #  filter(variable.label.fix.2.fix_PAM=="growth")
+  #  filter(Original.ref.number==84)
+    filter(complete.cases(Experimental_temp.level.degrees_fix))
+  
+dat1<-dat1.5
+
+```
+
+
 
 
 ## effect_direction
@@ -613,7 +710,7 @@ mess1<-dat1 %>%   # names(dat1)
   filter(!duplicated(mes)) %>% 
   arrange(Original.ref.number) %>% 
   group_by(Original.ref.number) %>% 
-  summarise(Factorial_experiment=n())  %>% 
+  dplyr::summarise(Factorial_experiment=n())  %>% 
   filter(Factorial_experiment>2) %>% 
   mutate(factorial="yes") %>% 
   dplyr::select(Original.ref.number,factorial)
@@ -672,21 +769,27 @@ mes1<-mes[,c(1,2,7,8,9,12,16,17,18,20,24,25,26,57,58,93:94)]  # names(mes)
 ## Activ_energy
 Calcualte activation energy and equivalent for CO2 exp
 there are some rows lost becuase of incompatablity with AE formulas, but very few
-```{r desc}
+```{r AE}
 
  k1<-.00008617734  # constant for AE calculation  - Boltzmann constant
 
 temp_exp_k1<-(k1*(273+dat1$experimental_temp.level..degrees.))^-1
  temp_con_k1<-(k1*(273+dat1$control_temp.level))^-1
+ ## some studies have true 0 in variations, add small number to no get "inf"
+ dat1$experimental_variation_good_positive[dat1$experimental_variation_good_positive == 0]<- 0.0001
+ dat1$control_variation_good_positive[dat1$contro_variation_good_positive == 0]<- 0.0001
+ 
  ### should we use _postitive?
  dat1$AE_9eV_temp<-log(dat1$experimental_mean.response/dat1$control_mean_response) / ( temp_exp_k1- temp_con_k1)
  dat1$AE_9eV_temp_pos_response<-log(dat1$experimental_mean_response_positive/dat1$control_mean_response_positive) / ( temp_exp_k1- temp_con_k1)
  # hist(dat1$AE_9eV_temp_pos_response)   hist(temp_exp_k1- temp_con_k1)
+ 
  #  psych::describe(dat1$experimental_mean.response/dat1$control_mean_response)
  ## propogate error
  err<-sqrt((dat1$experimental_variation_good_positive/dat1$experimental_mean.response)^2
            +(dat1$control_variation_good_positive/dat1$control_mean_response)^2)
  dat1$AE_9eV_temp_variation<-log((err/(temp_con_k1 - temp_exp_k1))+1)  # hist(dat1$AE_9eV_temp_variation)
+
  #  correct for direction ###
  dat1$AE_9eV_temp[dat1$effect.direction=="negative"]<-dat1$AE_9eV_temp[dat1$effect.direction=="negative"]*-1
  dat1$AE_9eV_temp_pos_response[dat1$effect.direction=="negative"]<-dat1$AE_9eV_temp_pos_response[dat1$effect.direction=="negative"]*-1
@@ -710,9 +813,13 @@ chh<- 100  #  !!!! number to reduce number of change,   if  needed  !!!!!!!!!
  
  ##### remove mean_fixes and other columns    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #   switch variations
-dat1 <- dat1 %>%     # names(dat1)
+dat1 <- dat1 %>%     # names(dat1)    dat1$AE_9eV_temp_variation
   mutate(experimental_variation=experimental_variation_good,control_variation=control_variation_good) %>% 
-  dplyr::select(-mean_fix,-mean_fix2, -fix.rates, -experimental_variation_good, -control_variation_good)
+  dplyr::select(-mean_fix,-mean_fix2, -fix.rates, -experimental_variation_good, -control_variation_good) %>% 
+  mutate(AE_9eV_temp_variation=ifelse( is.nan(AE_9eV_temp_variation) , NA, AE_9eV_temp_variation)) %>% 
+  mutate(AE_9eV_temp_variation=ifelse( is.infinite(AE_9eV_temp_variation) , NA, AE_9eV_temp_variation))
+
+
 ```
 
 ## combine dat and study
@@ -793,12 +900,18 @@ dat4$exp_temp_minus_SST_high_Lt_max_3catagory <- cut(dat4$exp_temp_minus_SST_hig
 ```
 
 ## tidy_dat5
-tidy table to include only data used in meta-analysis
+tidy table to include only data used in meta-analysis !!!!!!!!!!!!!!!!!!!!!!!!
 ```{r tidy_dat5}
 # names(names_final_dat)    names_final_dat$Columns.required   names(dat4)
 dat5 <- dat4 %>% 
   select(one_of(names_final_dat$Columns.required)) %>% 
-  rename_at(vars(names_final_dat$Columns.required), ~names_final_dat$Colums.required.fix)
+  rename_at(vars(names_final_dat$Columns.required), ~names_final_dat$Colums.required.fix) %>% 
+  ## fix some names
+  mutate(Trait.type=if_else(Trait.type=="bleaching", "symbiont density", Trait.type)) %>% 
+  mutate(Trait.type=if_else(Trait.type=="pam", "photochemical efficiency", Trait.type)) %>% 
+  mutate(Trait.type=if_else(Trait.type=="PAM", "photochemical efficiency", Trait.type))
+
+unique(dat5$Trait.type)
   
 
 ```
@@ -823,12 +936,6 @@ write.table(trait2, paste(save_file,"traits_fixed.csv", sep=""), sep=",",row.nam
 write.table(stud3, paste(save_file,"study_fixed.csv", sep=""), sep=",",row.names=F)  # stud2
 ```
 
-
-## desc
-
-```{r desc}
-
-```
 
 
 
