@@ -64,6 +64,7 @@ keep only calcyfying corals and remove deep sea corals
    filter(Deep.sea.=="No" | is.na(Deep.sea.))  %>%  ##!!!!!!!!!!!!!!!!
   filter(Latitude.decimal.degrees <= 35) %>%   #!!!!!!!!!!!!!!!! remove a few norther studies
   #filter(Trait.type!= "growth") %>%   # !!!!!!!!!! remove growth - very few aftre corrections
+<<<<<<< HEAD
 
    mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
    mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
@@ -79,6 +80,18 @@ mes<- sdat %>%
 mhw<- mhw %>%   # names(mhw)
   mutate(Global.Warming_plus_mhw= Global.Warming_recent + Maximum.Annual.Intensity.of.Marine.Heatwaves)
 
+=======
+
+   mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
+   mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
+     
+   filter(co2_change <= 800 | is.na(co2_change)) %>% #  # !!!!!!!!!!!!!!!!limit to realistic changes in CO2
+    droplevels() 
+   
+mhw<- mhw %>%   # names(mhw)
+  mutate(Global.Warming_plus_mhw= Global.Warming_recent + Maximum.Annual.Intensity.of.Marine.Heatwaves)
+
+>>>>>>> d61dbefe4d560152b660b413f9106007f485453d
 ```
 
 
@@ -293,12 +306,21 @@ rcp_proj <-  data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))  %>%  # s
   # to go from temp to AE used linear realtinoship between difference in 1/kt and difference in degree C use 0.128710787*(temp deg.C)-0.003138539
   mutate(relative_prop=if_else(response=="temperature", -0.128710787*projected_temp-0.003138539, rcp_co2/100)) %>%  # make relative to change
   mutate(mean_prop_estimate=exp(relative_prop*Estimate)) %>% # get projected mean estimate
+<<<<<<< HEAD
   
   #calculate Confidence interval
  #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
     mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
    # mutate(CI_estimate= mean_prop_estimate + first_ci ) %>%  # orignial diff + new mean_AE
   
+=======
+  
+  #calculate Confidence interval
+ #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
+    mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
+   # mutate(CI_estimate= mean_prop_estimate + first_ci ) %>%  # orignial diff + new mean_AE
+  
+>>>>>>> d61dbefe4d560152b660b413f9106007f485453d
   # calc if CI overlaps with 0
   mutate(Sigificant=if_else( mean_prop_estimate+ abs(CI_estimate) < 1,"yes","no"))  %>%   # does 95% CI overlap with 0
     # remove extra co2 measures because only 3 rcps hsould = 388 rows
