@@ -64,7 +64,6 @@ keep only calcyfying corals and remove deep sea corals
    filter(Deep.sea.=="No" | is.na(Deep.sea.))  %>%  ##!!!!!!!!!!!!!!!!
   filter(Latitude.decimal.degrees <= 35) %>%   #!!!!!!!!!!!!!!!! remove a few norther studies
   #filter(Trait.type!= "growth") %>%   # !!!!!!!!!! remove growth - very few aftre corrections
-<<<<<<< HEAD
 
    mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
    mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
@@ -77,21 +76,11 @@ mes<- sdat %>%
   select(Stressor.studied,Trait.type,temp_AE) %>% 
   filter(Trait.type=="respiration" )
  
-mhw<- mhw %>%   # names(mhw)
-  mutate(Global.Warming_plus_mhw= Global.Warming_recent + Maximum.Annual.Intensity.of.Marine.Heatwaves)
 
-=======
-
-   mutate(temp_change=Experimental_temp.level.degrees-Control_temp.level.degrees) %>% 
-   mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
-     
-   filter(co2_change <= 800 | is.na(co2_change)) %>% #  # !!!!!!!!!!!!!!!!limit to realistic changes in CO2
-    droplevels() 
    
 mhw<- mhw %>%   # names(mhw)
   mutate(Global.Warming_plus_mhw= Global.Warming_recent + Maximum.Annual.Intensity.of.Marine.Heatwaves)
 
->>>>>>> d61dbefe4d560152b660b413f9106007f485453d
 ```
 
 
@@ -203,7 +192,7 @@ for (j in c(1,2)) {   # for stressor
 ## meta diagnositcs
 some code to check for biases and outliers
 
-```{r meta_diag}
+```{r meta_diag, eval=FALSE, include=FALSE}
 
 sdat$yi<-sdat$AE_9eV_temp_pos_response # choose effect size metric
 sdat$vi<-sdat$AE_9eV_temp_variation
@@ -264,11 +253,19 @@ mes<-sdat2 %>%  # names(sdat2)
   arrange(desc(mean_st))
 
 
-  # to make consistant for temp and respiration make ci.lb into ci.ub ,  unique(sdat$Trait.type)
-op<-op %>%   # names(op)
-    mutate(ci.lb= ifelse(response == "temperature"  & variable=="respiration" ,ci.ub , ci.lb) )
+
 
 ```
+
+# fix resp direction-old
+```{r resp}
+  # to make consistant for temp and respiration make ci.lb into ci.ub ,  unique(sdat$Trait.type)
+#op<-op %>%   # names(op)
+#    mutate(ci.lb= ifelse(response == "temperature"  & variable=="respiration" ,ci.ub , ci.lb) ) %>% 
+ #   mutate(Estimate= ifelse(response == "temperature"  & variable=="respiration" ,abs(Estimate) , Estimate) )
+```
+
+
 
 ## RCP projections
 
@@ -305,28 +302,26 @@ rcp_proj <-  data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))  %>%  # s
   mutate(CI=ci.ub-ci.lb) %>% # calc. confidence interval
   # to go from temp to AE used linear realtinoship between difference in 1/kt and difference in degree C use 0.128710787*(temp deg.C)-0.003138539
   mutate(relative_prop=if_else(response=="temperature", -0.128710787*projected_temp-0.003138539, rcp_co2/100)) %>%  # make relative to change
-  mutate(mean_prop_estimate=exp(relative_prop*Estimate)) %>% # get projected mean estimate
-<<<<<<< HEAD
+  mutate(mean_prop_estimate=exp(relative_prop*Estimate)) %>% # get projected mean estimate    exp(-0.56*0.06)  .928
+
   
   #calculate Confidence interval
  #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
     mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
-   # mutate(CI_estimate= mean_prop_estimate + first_ci ) %>%  # orignial diff + new mean_AE
-  
-=======
-  
-  #calculate Confidence interval
- #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
-    mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
-   # mutate(CI_estimate= mean_prop_estimate + first_ci ) %>%  # orignial diff + new mean_AE
-  
->>>>>>> d61dbefe4d560152b660b413f9106007f485453d
+   # respiration and growth have opposite repsonse to change - no diffreence
+  # mutate(CI_estimate=if_else(variable == "growth" | variable == "respiration" & response == "temperature", ( exp(ci.ub * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), CI_estimate  )) %>% 
   # calc if CI overlaps with 0
-  mutate(Sigificant=if_else( mean_prop_estimate+ abs(CI_estimate) < 1,"yes","no"))  %>%   # does 95% CI overlap with 0
+  mutate(Significant=if_else( mean_prop_estimate+ abs(CI_estimate) < 1,"yes","no"))  %>%   # does 95% CI overlap with 0
+  # respiration and growth have opposite repsonse to change
+  mutate(check=mean_prop_estimate - abs(CI_estimate)) %>% 
+  mutate(Significant=if_else(variable == "respiration" & response == "temperature"  & check > 1,"yes", Significant))  %>%   # does 95% CI overlap with 0
+    mutate(Significant=if_else(variable == "growth" & response == "temperature"  & check > 1,"yes", Significant))  %>% 
+  select(-check) %>% 
     # remove extra co2 measures because only 3 rcps hsould = 388 rows
   unite(co2_remove, c(Estimate:sample_size,rcp_change,CI), sep="_", remove=FALSE) %>% 
   dplyr::distinct(co2_remove, .keep_all = TRUE)
   
+### fix for resp and growth for temp
 
 
 
@@ -364,6 +359,7 @@ for (j in c(1:length(op2$Estimate)) ) {
   ii<-i/100  # determein degree incremnt step - 
   ## add increase to AE estimate from model
   dum$increment[i]<-ii
+  
   ## account for difference in sign between reponses
       if (op2$response[j] == "temperature"){
       ## get AE of increase (stepping by 0.1 degree C when ii=10 or ii - 0.001)
@@ -372,11 +368,21 @@ for (j in c(1:length(op2$Estimate)) ) {
   ## use original mean and CI from model to get CI in AE
     first_ci<-(  exp(op2$ci.lb[j] * -0.128710787  -0.003138539)  ) -  (    exp(op2$Estimate[j] * -0.128710787  -0.003138539  )  )
   
-  
   dum$prop_mean_AE[i]<- exp(op2$Estimate[j] * KT_increm)
   # dum$prop_CI_AE[i]<- exp(op2$ci.lb[j] * KT_increm)  # lower bound for Temp - used before Mar 2020
   
-  dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] + first_ci   # orignial diff + new mean_AE
+  
+  
+ # exception for resp and growth 
+      if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] - abs(first_ci) 
+      } else {
+  dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] + abs(first_ci)  
+      } # orignial diff + new mean_AE
+  
+    
+  
+  
   #dum$prop_CI_AE[i]<- (exp(  (op2$ci.ub[j]-op2$Estimate[j]) * KT_increm) ) + dum$prop_mean_AE[i] #  - bad
       } else {
         ## for CO2!!!
@@ -392,13 +398,22 @@ for (j in c(1:length(op2$Estimate)) ) {
   
   ## created table now check for parameters
   ## first for temp then CO2
+  
   ## for temp
   if (op2$response[j]=="temperature"){
     dum2<-dum[dum$increment<=max_degree_change,] ## limit findings to increments 0.1 to max
     temp_l<-length(dum2$increment)
-     # find when prop_CI_ub_AE is <1
-    less1<-dum2[dum2$prop_CI_AE <= 1  , ] # set cutoff- always 1
- 
+     # find when prop_CI_ub_AE is <1, or approaches 1
+
+    
+     if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         less1<-dum2[dum2$prop_CI_AE >= 1  , ] #
+      } else {
+      less1<-dum2[dum2$prop_CI_AE <= 1  , ] # set cutoff- always 1 - was original code before adding exception above
+      }
+    
+    
+    
     #more1<-dum2[dum2$prop_CI_AE >= 1, ]
     
   # if prop_CI_AE becomes less than 1 get temp increment -- length(less1) <50 means nothing was removed from table
@@ -410,7 +425,14 @@ for (j in c(1:length(op2$Estimate)) ) {
   
   # if prop_CI_AE is alwasy greater than 1 (length of orignial data) it is always significant, but then get temp. increase when prop_meanis < 0.95
         if (length(less1$increment) < temp_l) {
-     less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+          
+     #   less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+       if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         less_mean_0.95n<- dum2[dum2$prop_mean_AE >= 1.05, ] #
+      } else {
+      less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ] # set cutoff- always 1 - was original code before adding exception above
+      }
+     
             if (length(less_mean_0.95n$increment) < temp_l & length(less_mean_0.95n$increment) >=1) { # check to see if went below 95%
               outp<-less_mean_0.95n[1,]
               answerp<-"temp_Sig. CI , see incremnt mean <=95%"
@@ -422,7 +444,15 @@ for (j in c(1:length(op2$Estimate)) ) {
     
     # if prop_CI_AE alwasy greater than 1 - not sensitive
         if (length(less1$increment) == 0) {
-       more_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ]
+
+       
+           if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         less_mean_0.95n<- dum2[dum2$prop_mean_AE >= 1.05, ] #
+      } else {
+      less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ] # set cutoff- always 1 - was original code before adding exception above
+      }
+       
+       
             if (length(more_mean_0.95n$increment) < temp_l & length(more_mean_0.95n$increment) >=1) { # check to see if went below 95%
               outp<-more_mean_0.95n[1,]
               answerp<-"temp-CI always >1, increment mean <=95%"
@@ -433,14 +463,28 @@ for (j in c(1:length(op2$Estimate)) ) {
           } # end of temp inc equal
     
     #  get increment when mean prop become < or = 0.95
-      lessninefive<-dum[dum$prop_mean_AE <= 0.95  , ] 
+      
+             if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         lessninefive<-dum[dum$prop_mean_AE >= 1.05  , ]  #
+      } else {
+      lessninefive<-dum[dum$prop_mean_AE <= 0.95  , ] # set cutoff- always 1 - was original code before adding exception above
+      }
+      
+      
      if (length(lessninefive$increment) > 0){
             mean_95p<-lessninefive[1,1] # get first row when become <1
      } else {    
       mean_95p<-NA }
     
        #  get increment when ci prop becomes <= 1
-      less1_all<-dum[dum$prop_CI_AE <= 1  , ] # set cutoff
+      # set cutoff
+         if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
+         less1_all<-dum[dum$prop_CI_AE >= 1  , ]  #
+      } else {
+       less1_all<-dum[dum$prop_CI_AE <= 1  , ] # set cutoff- always 1 - was original code before adding exception above
+      }
+      
+      
      if (length(less1_all$increment) >= 1){
             ci_less_1<-less1_all[1,1] # get first row when become <1
               prop_when_ci_less_1<-less1_all[1,2]
@@ -536,13 +580,20 @@ for (j in c(1:length(op2$Estimate)) ) {
     write.table(op, paste(save_file_shared,"meta-analysis_summary_mar_2020_github.csv",sep=""), sep=",",row.names=F)
 
 #### export rcp projection table to shared folder
-    write.table(rcp_proj, paste(save_file_shared,"mhw_rcp_projections_from_meta.csv",sep=""), sep=",",row.names=F)
+    write.table(rcp_proj, paste(save_file_shared,"mhw_rcp_projections_from_meta_may2020.csv",sep=""), sep=",",row.names=F)
     
     #### export meta-analysis summary table to shared folder
     op2.2 <- op2 %>% 
       select(-finding)
     
-    write.table(op2.2, paste(save_file_shared,"meta-analysis_summary_mar2020_with_future.csv",sep=""), sep=",",row.names=F)
+    write.table(op2.2, paste(save_file_shared,"meta-analysis_summary_may2020_with_future.csv",sep=""), sep=",",row.names=F)
+    
+    
+# export data used in analysis   - use   sdat
+    write.table(sdat, paste(save_file_shared,"data_used_in_meta-analysis__may2020.csv",sep=""), sep=",",row.names=F)
+    
+    
+    
 ```
 
 
@@ -564,18 +615,22 @@ maps::map("worldHires",xlim = c(-180,180), ylim = c(-85,85),fill=T,col="gray", b
      cex.lab=1, mar=c(3,5,0,2))
 map.axes(lty=1.2)
 points(mdat$Longitude.decimal.degrees., mdat$Latitude.decimal.degrees, cex=.7)
-mtext("Longitude", SOUTH<-1, line=-5, adj=.42,outer=TRUE,cex=1)
+#mtext("Longitude", SOUTH<-1, line=-5, adj=.42,outer=TRUE,cex=1)
+mtext("Longitude", SOUTH<-1, line=-3.5, adj=.42,outer=TRUE,cex=1)
 mtext("Latitude", WEST<-2, line=-1.2, adj=0.5,outer=TRUE,cex=1)
 par(fig=c(0.83,1,0.237,0.765), mar=c(0,.5,0,1), new=TRUE)
 h<-hist(mdat$Latitude.decimal.degrees,plot=F)
-hh<-c(0,0,0,0,h$counts,0,0,0)  #  c(0,0,h$counts,0)
+hh<-c(0,0,0,h$counts,0,0,0,0)  #  c(0,0,h$counts,0)
 barplot(hh,width=1,horiz=T, beside=T,xlim=c(0,100),
         space=0, las=1)   # names.arg = hh$mids
 axis(side=2, at=c(2,7,12), labels=c(-50,0,50),las=0)
 box(lty=1.2)
-mtext("Locations", SOUTH<-1, line=-5.0, adj=.95,outer=TRUE,cex=1)
+#mtext("Locations", SOUTH<-1, line=-5.0, adj=.95,outer=TRUE,cex=1)
+mtext("Locations", SOUTH<-1, line=-3.5, adj=.95,outer=TRUE,cex=1)
 
-## save to 
+## save   ------  map_of_sites_may_2020
+
+
 ```
 
 

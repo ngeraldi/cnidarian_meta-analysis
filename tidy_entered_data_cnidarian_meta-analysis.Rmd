@@ -102,9 +102,11 @@ geodat<-read.table(paste(dat_file,"Study_regions.csv", sep="" ), sep=",", header
 ###  script to extract this data data is from "Maps_and_extract_script"
 # added to dat3 - global-layer_data   section
 abiotic<-read.table(paste(dat_file, "biooracle_global_abiotic_present_surface.csv",sep="" ), sep=",",header=T)
-land<-read.table(paste(dat_file, "global_human_and_abiotic_present.csv",sep="" ), sep=",",header=T)
-vel<-read.table(paste(dat_file, "climate_velocities.csv",sep="" ), sep=",",header=T)
+land<-read.table(paste(dat_file, "global_human_and_abiotic_present.csv",sep="" ), sep=",",header=T) # names(land)
+vel<-read.table(paste(dat_file, "climate_velocities.csv",sep="" ), sep=",",header=T) # names(vel)
 
+mes<- vel %>% 
+  arrange(Original.ref.number)
 ```
 
 
@@ -114,6 +116,9 @@ vel<-read.table(paste(dat_file, "climate_velocities.csv",sep="" ), sep=",",heade
 ref1<- ref %>% 
   mutate_at(vars(Reasons.for.rejection), funs(tolower))  %>% 
   left_join(corr2) 
+
+
+
 ```
 
 ## tidy species data
@@ -497,18 +502,18 @@ unique(dat1$variable.label)
 ## fix corr2_1 for names
 corr2_1 <- corr2_1 %>% # names(corr2_1)
     dplyr::rename(Retriever=Extractor , Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type) %>% 
-    select(-Trait.units) %>% 
+    dplyr::select(-Trait.units) %>% 
     mutate(Original.ref.number = as.numeric(Original.ref.number))
 corr2_2 <- corr2_2 %>% # names(corr2_2)
     dplyr::rename(Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type, variable.unit=Trait.units) %>% 
     mutate(Original.ref.number = as.numeric(Original.ref.number)) %>% 
-    select(-Stressors.studied_study)
+    dplyr::select(-Stressors.studied_study)
 corr_temp2 <- corr_temp %>% # names(corr_temp2)
       dplyr::rename(Original.ref.number = Reference.ID , variable.label.fix.2.fix_PAM = Trait.type, variable.unit=Trait.units,
                     effect.direction = Effect.direction, experimental_temp.level..degrees.=Experimental_temp.level.degrees, 
                     experimental_sample.size=Experimental_sample.size,  experimental_mean.response= Experimental_mean.response_original) %>% 
     mutate(Original.ref.number = as.numeric(Original.ref.number)) %>% 
-    select(-Stressors.studied_study, -variable.label.fix.2.fix_PAM)
+    dplyr::select(-Stressors.studied_study, -variable.label.fix.2.fix_PAM)
   
 
 
@@ -526,11 +531,11 @@ dat1.5 <- dat1 %>%    # names(dat1)
     left_join(corr2_1) %>%
     mutate(variable.label.fix.2.fix_PAM=if_else(complete.cases(Trait.type.fix)   , Trait.type.fix , variable.label.fix.2.fix_PAM )) %>% 
     mutate(variable.unit=if_else(complete.cases(Trait.units.fix)   , Trait.units.fix , variable.unit )) %>%
-    select (-Trait.type.fix , -Trait.units.fix) %>% 
+    dplyr::select (-Trait.type.fix , -Trait.units.fix) %>% 
   # corrections based on file 2- corr2_2
     left_join(corr2_2) %>%
     mutate(variable.unit=if_else(complete.cases(Trait.units.fix)   , Trait.units.fix , variable.unit )) %>%
-    select ( -Trait.units.fix) %>%  ###   unique(dat1.5$variable.unit)
+    dplyr::select ( -Trait.units.fix) %>%  ###   unique(dat1.5$variable.unit)
   # other unit corrections
     mutate(variable.unit=if_else(grepl("prey consumed h-1 cm-2", variable.unit)   , "prey consumed h-1 cm-2 ml-1" , variable.unit )) %>%
     mutate(variable.unit=if_else(grepl("µmol electrons m-2 s", variable.unit)   , "µmol electrons m-2 s-1" , variable.unit )) %>% 
@@ -546,7 +551,7 @@ dat1.5 <- dat1 %>%    # names(dat1)
   # temp corrections using names(corr_temp2)
     left_join(corr_temp2) %>% 
     mutate(experimental_temp.level..degrees.=if_else(complete.cases(Experimental_temp.level.degrees_fix)   , Experimental_temp.level.degrees_fix , experimental_temp.level..degrees. )) %>%
-      select(-Experimental_temp.level.degrees_fix) %>% 
+      dplyr::select(-Experimental_temp.level.degrees_fix) %>% 
  # CO2 corrections
     mutate(experimental_pCO2.level..µatm..ppm.=ifelse(experimental_pCO2.level..µatm..ppm. == 909.25 & Original.ref.number == 84, NA, experimental_pCO2.level..µatm..ppm.) ) %>% 
     mutate(experimental_pCO2.level..µatm..ppm.=ifelse(experimental_pCO2.level..µatm..ppm. == 909.25 & Original.ref.number == 159, NA, experimental_pCO2.level..µatm..ppm.) ) %>% 
@@ -884,19 +889,22 @@ script for this will be in maps_extract script
 #### now dat4
 ```{r desc}
 
-vel1<-vel[,c(2:3,7,9,11,13,15)]
+vel1<-vel[,c(1,7,9,11,13,15,17)]   # names(vel)
 vel1<-dplyr::rename(vel1,vel_average_sst=average_sst.1,vel_linear_change=linear_change.1,vel_spatial_gradient=spatial_gradient.1,
-                    vel_angle=angle.1,vel_velocity_magnitude=velocity_magnitude.1)
+                    vel_angle=angle.1,vel_velocity_magnitude=velocity_magnitude.1, sstanom=sstanom.1)
 ##    names(dat3) names(land)   names(vel1)    names(abiotic)
 dat4 <- dat3 %>% 
   left_join(abiotic[,c(1,7:length(names(abiotic)))], by="unique_study_loc") %>% 
-  left_join(land[,c(1,7:16)], by="unique_study_loc") %>% 
-  left_join(vel1) 
+  left_join(land[,c(1,7:13,15,16)], by="unique_study_loc") %>% # removed 13 - old sstanom from OHI
+  left_join(vel1, by="unique_study_loc") 
 #####  get difference between high lt temp and experiment
 # names(dat4)
 dat4$exp_temp_minus_SST_high_Lt_max<-dat4$experimental_temp.level..degrees. -  dat4$Present.Surface.Temperature.Lt.max
 dat4$exp_temp_minus_SST_high_Lt_max_3catagory <- cut(dat4$exp_temp_minus_SST_high_Lt_max, breaks=c(-Inf,2,4,Inf), 
                                   labels=c("<2","2-4",">4"))
+
+mes<- dat4 %>% 
+  arrange(Original.ref.number)
 ```
 
 ## tidy_dat5
@@ -904,7 +912,7 @@ tidy table to include only data used in meta-analysis !!!!!!!!!!!!!!!!!!!!!!!!
 ```{r tidy_dat5}
 # names(names_final_dat)    names_final_dat$Columns.required   names(dat4)
 dat5 <- dat4 %>% 
-  select(one_of(names_final_dat$Columns.required)) %>% 
+  dplyr::select(one_of(names_final_dat$Columns.required)) %>% 
   rename_at(vars(names_final_dat$Columns.required), ~names_final_dat$Colums.required.fix) %>% 
   ## fix some names
   mutate(Trait.type=if_else(Trait.type=="bleaching", "symbiont density", Trait.type)) %>% 
@@ -913,6 +921,21 @@ dat5 <- dat4 %>%
 
 unique(dat5$Trait.type)
   
+##   add back in columns for environmental match manuscript
+mes<- dat4 %>% 
+  dplyr::select(Present.Surface.Temperature.Lt.max,Present.Surface.Temperature.Range,sstanom,
+                                       msec_humanpop_50km,yrange,
+                                       Present.Surface.Salinity.Mean, coral_region_ID,  
+                                    coral_region, coral_region_coral_richness,
+                                       vel_linear_change, ECO_CODE, ECOREGION, PROV_CODE, PROVINCE)
+
+
+dat5.5 <- dat5 %>% # names(dat5.5)
+  bind_cols(mes)
+
+  
+  
+
 
 ```
 
@@ -923,9 +946,11 @@ unique(dat5$Trait.type)
 #  export tabel      names(dat4)
 
 # use  save_file set in universal variables
-write.table(ref1, paste(save_file,"references_fixed.csv", sep=""), sep=",",row.names=F)
+write.table(ref1, paste(save_file,"references_fixed.csv", sep=""), sep=",",row.names=F) # names(ref1) hist(ref1$Year)
 write.table(dat3, paste(save_file,"data_for_analysis.csv", sep=""), sep=",",row.names=F)   ## names(dat3)
 write.table(dat4, paste(save_file,"data_for_analysis_withabiotic.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
+
+write.table(dat5.5, paste(save_file,"data_for_analysis_withabiotic_June2020.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
 
 write.table(dat5, paste(save_file,"meta-analysis_used_data.csv", sep=""), sep=",",row.names=F)   ## names(dat4)
 # also to shared folder  -   save_file_shared
