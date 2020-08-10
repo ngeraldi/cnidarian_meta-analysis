@@ -21,6 +21,29 @@ Scripts associated with cnidarian meta-analysis on experiments testing effects o
       estimates effects using RCP projects
       estimates increases in temp and CO2 needed for impacts
 
-## product 2 scripts - 
+## product 2 scripts - link effect size with environemtal parameters - scripts starting with env
 
-coral_global_human_impact.Rmd - most of scripts used for this manuscript
+- env_match_data_extract_experiments.Rmd
+ 
+      extract data from global layers for collect location for each experiment
+      
+- env_match_data_extract_coral_reefs.Rmd
+ 
+      extract data from global layers for each coral reef mapped in globe
+ 
+- env_glob_stats_overall_1.Rmd
+ 
+      analysis of all data
+ 
+- env_match_stats_1_warming_by_response.Rmd
+ 
+      analysis of individual response catagories
+      
+- env_match_plots.Rmd
+ 
+      produce all plots of manuscript
+      
+- latitude_range_corals.Rmd
+ 
+      calculate latitudinal range of coral taxa used in experiment
+ 
