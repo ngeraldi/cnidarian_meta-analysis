@@ -1010,6 +1010,11 @@ mid_col<- "#FFFFCC"
 hig_col<- "#BD0026"
 
 ##  make base map
+leg_br<-c(-2,0,2)  # breaks for legend
+leg_lab<-leg_br  #  legend labels
+leg_lim<-c(-2.75,2.75)  # legend limits
+leg_mid<-0
+
 base_map<-ggplot() + 
   geom_sf(data = base_sf, color = NA, fill = base_color)   # names(base)
   #coord_sf(xlim = c(-180, 180),ylim = baseylim, label_axes=list(bottom = "E", left = "N")) +
@@ -1020,6 +1025,11 @@ base_map<-ggplot() +
 ###  plot
 #########################################################################################
 #### warm all
+leg_br<-c(0,0.15,0.3)  # breaks for legend
+leg_lab<-leg_br  #  legend labels
+leg_lim<-c(-0.1,0.4)  # legend limits
+leg_mid<-leg_br[2]
+
   wp<- base_map +
     geom_sf(data = coral_map_used, aes(fill = warm_all_predict_yi, color = warm_all_predict_yi), size=expand_size) +
     scale_fill_gradient2(legend_title, low=low_col,high=hig_col, mid=mid_col, midpoint=leg_mid, na.value = "transparent",
@@ -1031,6 +1041,11 @@ base_map<-ggplot() +
     scale_y_continuous(breaks = ylonlab, labels= ylonlab) +
     theme(axis.text.x = element_blank())
 #### chla  -1.5 to 3
+  leg_br<-c(0,0.5,1)  # breaks for legend
+leg_lab<-leg_br  #  legend labels
+leg_lim<-c(-0.5,1.5)  # legend limits
+leg_mid<-leg_br[2]
+
 chlap <-base_map +
     geom_sf(data = coral_map_used, aes(fill = chla_predict_yi, color = chla_predict_yi), size=expand_size )  +
  scale_fill_gradient2(legend_title,low=low_col,high=hig_col, mid=mid_col, midpoint=leg_mid, na.value = "transparent",
@@ -1053,6 +1068,11 @@ chlap <-base_map +
 #    scale_y_continuous(breaks = ylonlab, labels= ylonlab) +
 #    theme(axis.text.x = element_blank())
 #### pam  pp  -3 to 3
+leg_br<-c(0,0.1,0.2)  # breaks for legend
+leg_lab<-leg_br  #  legend labels
+leg_lim<-c(-0.05,0.2)  # legend limits
+leg_mid<-leg_br[2]
+
 pamp <-base_map +
     geom_sf(data = coral_map_used, aes(fill = pam_predict_yi, color = pam_predict_yi), size=expand_size )  +
  scale_fill_gradient2(legend_title,low=low_col,high=hig_col, mid=mid_col, midpoint=leg_mid, na.value = "transparent",
@@ -1069,9 +1089,9 @@ pamp <-base_map +
 ## maps
 ll<-LETTERS[1:3]
 fig_m<- ggpubr::ggarrange(change_legend(wp), 
-                          change_legend(chlap)+theme(legend.position="none"),
+                          change_legend(chlap),
                           #change_legend(resp)+theme(legend.position="none"),
-                          change_legend(pamp)+theme(legend.position="none"),
+                          change_legend(pamp),
                           nrow=length(ll), heights = c(1,1,1.17),
                           labels=ll, font.label=list(size = 9), hjust = -1.8, vjust=1.3)
 fig_m<- ggpubr::annotate_figure(fig_m,left = "Latitude"  )
@@ -1093,7 +1113,7 @@ fig_c<- ggpubr::ggarrange( fig_m, fig_b, nrow=2 , heights = c(3,2))  #
 #  dev.off()
 
 #   fig_c
-ggsave(filename="pred_lay_box_fig4_june2020.pdf", plot = fig_c, path = fig_file, width = 20, height = 22, units = c("cm"))
+ggsave(filename="pred_lay_box_fig4_july2020.pdf", plot = fig_c, path = fig_file, width = 20, height = 22, units = c("cm"))
 #ggsave(filename="pred_lay_box_fig4_june2020.tiff", plot = fig_c, path = fig_file, width = 20, height = 28, units = c("cm"))
 
 
