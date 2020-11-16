@@ -6,7 +6,7 @@ output: github_document
 ---
 
 
-Script is ot run the statisical analysis of the cnidarian data
+Script is to run the statisical analysis of the cnidarian data
 it uses the metafor package
 It also estimates change with RCP porojections
 And estimates what changes in temp or CO2 are needed for impacts
@@ -24,7 +24,7 @@ library("tiff")
 ```
 
 ## functions
-```{r_func}
+```{r_func eval=FALSE, include=FALSE}
 
 
 ```
@@ -32,13 +32,13 @@ library("tiff")
 ## universal variables
 ```{r directory}
 ## file that has data
-dat_file="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+dat_file="/Users/nathangeraldi/Dropbox/Cnidaria meta-data/data/"
 #  also in  dat_file="/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export/"
 
 ## file to save data
-save_file="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+save_file="/Users/nathangeraldi/Dropbox/Cnidaria meta-data/data/"
 ##  shared file to save data
-save_file_shared="/Users/geraldn/Dropbox/Cnidaria meta-data/data/"
+save_file_shared="/Users/nathangeraldi/Dropbox/Cnidaria meta-data/data/"
 
 
 ```
@@ -69,6 +69,15 @@ keep only calcyfying corals and remove deep sea corals
    mutate(co2_change=Experimental_pCO2.level.µatm-Control_pCO2.level.µatm) %>% # hist(sdat$co2_change)
      
    filter(co2_change <= 800 | is.na(co2_change)) %>% #  # !!!!!!!!!!!!!!!!limit to realistic changes in CO2
+  
+  ## added to clarify/simplity symbiont density -added Oct 2020  unique(dat$Trait.type)
+  filter(! (Trait.type %in% "symbiont density"  & Trait.units %in% "% decrease in luminance ")  ) %>%
+  filter(! (Trait.type %in% "symbiont density"  & Trait.units %in% "% corals bleached")  ) %>%
+  filter(! (Trait.type %in% "symbiont density"  & Trait.units %in% "red channel intensity")  ) %>%
+  filter(! (Trait.type %in% "symbiont density"  & Trait.units %in% "bleaching index (6-1)")  ) %>%
+  # unique(sdat$Trait.units)
+    mutate(Stressor.studied=factor(Stressor.studied)) %>% 
+  mutate(Trait.type=factor(Trait.type)) %>% 
     droplevels()
 
   
@@ -111,10 +120,10 @@ resp<-levels(sdat$Trait.type)
 ```
 
 ## meta-analysis
-runs loop to run all catagory combinations - warming and/or CO2 manipulations (s_stud) and response trait measured (resp)
+runs loop to run all category combinations - warming and/or CO2 manipulations (s_stud) and response trait measured (resp)
 puts results into table
 ```{r meta-analysis}
-###### start looop   ######
+###### start loop   ######
 w<-1
 
 for (j in c(1,2)) {   # for stressor
@@ -300,7 +309,7 @@ rcp_proj <-  data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))  %>%  # s
   left_join(rcp)  %>%   # join to rcp data
   mutate(rcp_change=if_else(response=="temperature",projected_temp,rcp_co2)) %>% # make change depending on variable-temp or co2
   mutate(CI=ci.ub-ci.lb) %>% # calc. confidence interval
-  # to go from temp to AE used linear realtinoship between difference in 1/kt and difference in degree C use 0.128710787*(temp deg.C)-0.003138539
+  # to go from temp to AE used linear relationship between difference in 1/kt and difference in degree C use 0.128710787*(temp deg.C)-0.003138539
   mutate(relative_prop=if_else(response=="temperature", -0.128710787*projected_temp-0.003138539, rcp_co2/100)) %>%  # make relative to change
   mutate(mean_prop_estimate=exp(relative_prop*Estimate)) %>% # get projected mean estimate    exp(-0.56*0.06)  .928
 
@@ -308,11 +317,11 @@ rcp_proj <-  data.frame(op,i=rep(1:length(rownames(rcp)),ea=NROW(op)))  %>%  # s
   #calculate Confidence interval
  #  mutate(CI_estimate=((exp(ci.lb*relative_prop))-(exp(ci.ub*relative_prop)))/2) %>% # get project 95% CI previous old calc-bad
     mutate(CI_estimate=if_else(response=="temperature",( exp(ci.lb * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), (exp(ci.ub) - (exp(Estimate)))  )) %>% 
-   # respiration and growth have opposite repsonse to change - no diffreence
+   # respiration and growth have opposite response to change - no difference
   # mutate(CI_estimate=if_else(variable == "growth" | variable == "respiration" & response == "temperature", ( exp(ci.ub * -0.128710787  -0.003138539) ) -  (exp(Estimate * -0.128710787  -0.003138539  ) ), CI_estimate  )) %>% 
   # calc if CI overlaps with 0
   mutate(Significant=if_else( mean_prop_estimate+ abs(CI_estimate) < 1,"yes","no"))  %>%   # does 95% CI overlap with 0
-  # respiration and growth have opposite repsonse to change
+  # respiration and growth have opposite response to change
   mutate(check=mean_prop_estimate - abs(CI_estimate)) %>% 
   mutate(Significant=if_else(variable == "respiration" & response == "temperature"  & check > 1,"yes", Significant))  %>%   # does 95% CI overlap with 0
     mutate(Significant=if_else(variable == "growth" & response == "temperature"  & check > 1,"yes", Significant))  %>% 
@@ -347,6 +356,7 @@ dum <- data.frame("increment" = s+1000, "prop_mean_AE" = s+1000,"prop_CI_AE" = s
 
 ## run estimate loop
 calculate temperature or CO@ increase that CI no longer crosses 1 or is significant
+
 ```{r est_temp_run}
 
 # c(1:length(op2$Estimate))
@@ -356,7 +366,7 @@ for (j in c(1:length(op2$Estimate)) ) {
   ## TO CHECK need to keep actual seq() in for loop, messes up when use variable name (s10)!!!
   for (i in seq(1,length(s),by=1)) {
    #  i<-43  j<-30
-  ii<-i/100  # determein degree incremnt step - 
+  ii<-i/100  # determine degree incremnt step - 
   ## add increase to AE estimate from model
   dum$increment[i]<-ii
   
@@ -378,7 +388,7 @@ for (j in c(1:length(op2$Estimate)) ) {
          dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] - abs(first_ci) 
       } else {
   dum$prop_CI_AE[i]<- dum$prop_mean_AE[i] + abs(first_ci)  
-      } # orignial diff + new mean_AE
+      } # original diff + new mean_AE
   
     
   
@@ -442,14 +452,14 @@ for (j in c(1:length(op2$Estimate)) ) {
                     }
           } # end of temp inc <
     
-    # if prop_CI_AE alwasy greater than 1 - not sensitive
+    # if prop_CI_AE always greater than 1 - not sensitive
         if (length(less1$increment) == 0) {
 
        
            if (op2$variable[j] == "respiration" | op2$variable[j] == "growth"){
-         less_mean_0.95n<- dum2[dum2$prop_mean_AE >= 1.05, ] #
+         more_mean_0.95n<- dum2[dum2$prop_mean_AE >= 1.05, ] #
       } else {
-      less_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ] # set cutoff- always 1 - was original code before adding exception above
+      more_mean_0.95n<- dum2[dum2$prop_mean_AE <= 0.95, ] # set cutoff- always 1 - was original code before adding exception above
       }
        
        
@@ -577,20 +587,20 @@ for (j in c(1:length(op2$Estimate)) ) {
 ```{r export}
 
 #### export meta-analysis summary table to shared folder
-    write.table(op, paste(save_file_shared,"meta-analysis_summary_mar_2020_github.csv",sep=""), sep=",",row.names=F)
+    write.table(op, paste(save_file_shared,"meta-analysis_summary_oct2020_github.csv",sep=""), sep=",",row.names=F)
 
 #### export rcp projection table to shared folder
-    write.table(rcp_proj, paste(save_file_shared,"mhw_rcp_projections_from_meta_may2020.csv",sep=""), sep=",",row.names=F)
+    write.table(rcp_proj, paste(save_file_shared,"mhw_rcp_projections_from_meta_oct2020.csv",sep=""), sep=",",row.names=F)
     
     #### export meta-analysis summary table to shared folder
     op2.2 <- op2 %>% 
       select(-finding)
     
-    write.table(op2.2, paste(save_file_shared,"meta-analysis_summary_may2020_with_future.csv",sep=""), sep=",",row.names=F)
+    write.table(op2.2, paste(save_file_shared,"meta-analysis_summary_oct2020_with_future.csv",sep=""), sep=",",row.names=F)
     
     
 # export data used in analysis   - use   sdat
-    write.table(sdat, paste(save_file_shared,"data_used_in_meta-analysis__may2020.csv",sep=""), sep=",",row.names=F)
+    write.table(sdat, paste(save_file_shared,"data_used_in_meta-analysis__oct2020.csv",sep=""), sep=",",row.names=F)
     
     
     
