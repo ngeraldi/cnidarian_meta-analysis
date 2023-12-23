@@ -31,9 +31,6 @@ Scripts associated with cnidarian meta-analysis on experiments testing effects o
  
       extract data from global layers for each coral reef mapped in globe
  
-- env_glob_stats_overall_1.Rmd
- 
-      analysis of all data
  
 - env_match_stats_1_warming_by_response.Rmd
  
