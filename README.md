@@ -13,7 +13,7 @@ Scripts associated with cnidarian meta-analysis on experiments testing effects o
       
       Note: raw data is not yet provided for this script, but is provided for transparancy: data produced from this script is in publication in supplamanetal material
 
-## product 1 scripts - meta-analysis and RCP projections
+## - meta-analysis and RCP projections -  GCB publication - https://onlinelibrary.wiley.com/doi/full/10.1111/gcb.15818
 
 - cnidarian_meta-analysis_statistics.Rmd
 
@@ -21,7 +21,8 @@ Scripts associated with cnidarian meta-analysis on experiments testing effects o
       estimates effects using RCP projects
       estimates increases in temp and CO2 needed for impacts
 
-## product 2 scripts - link effect size with environemtal parameters - scripts starting with env
+## Environmental thermal variability and species diversity affect coral sensitivity to thermal stress
+# Data available here - (https://figshare.com/account/home#/projects/190410)
 
 - env_match_data_extract_experiments.Rmd
  
