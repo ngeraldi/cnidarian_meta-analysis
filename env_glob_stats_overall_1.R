@@ -1,9 +1,13 @@
 
+
+#######.  load libraries.  ############################
 library(dplyr)
 library(tidyr)
 library(lme4)
 library(lmerTest)
 
+
+###############   funtions. ##########################
 ### function to remove attributes appearing after scaling
 one_entry <- function(x) {
   for (i in length(x)) attr(x[[i]], "names") <- NULL
@@ -15,14 +19,21 @@ write.excel <- function(x,row.names=FALSE,col.names=TRUE,...) {
   write.table(x,"clipboard",sep="\t",row.names=row.names,col.names=col.names,...)
 }
 
-write.excel(my.df)
+#  write.excel(my.df)
+
+#############################################################################################
+setwd("/Users/nathangeraldi/Dropbox/Cnidaria meta-data/data/")
+#############################################################################################
 
 
-setwd("/Users/geraldn/Dropbox/Cnidaria meta-data/data/")
+#############################################################################################
+## in put data table - available at..
 dat<-read.table("data_for_analysis_withabiotic_June2020.csv", sep=",",header=T)   ## na
  names(dat)
 # "AE_9eV_temp" "AE_9eV_temp_pos_response"  "AE_9eV_temp_variation"                   
 # "AE_9eV_CO2ppm"  "AE_9eV_CO2ppm_pos_response" "AE_9eV_CO2ppm_variation"
+ 
+ 
  #############################################################################################
  ##    general clean up     #####################
  #   unique(dat$Stressors.studied_study)
@@ -54,7 +65,9 @@ dat<-read.table("data_for_analysis_withabiotic_June2020.csv", sep=",",header=T) 
    filter(!is.na(Latitude.decimal.degrees)) %>% 
    filter(is.na(Present.Surface.Temperature.Range)) 
  
-   
+
+ #############################################################################################
+ ### variable inflation fator - test for multicolinearity
 HH::vif(xx = as.data.frame(sdat[ ,c("Present.Surface.Temperature.Range","sstanom","Present.Surface.Temperature.Lt.max",
                                        "msec_humanpop_50km","yrange",
                                        "Present.Surface.Salinity.Mean","coral_region_coral_richness",
@@ -63,7 +76,9 @@ HH::vif(xx = as.data.frame(sdat[ ,c("Present.Surface.Temperature.Range","sstanom
  ##  all < 1.5     O2 range and temp range highly correlated, O2 removed , salinity with 2.5 removed then <1.5
 #############################################################################################
 #############################################################################################
-#    get info from global coral  and clean   
+ 
+ #############################################################################################
+#    get info from global coral and clean   
 
 c_dat<-data.table::fread(file = '/Users/geraldn/Dropbox/Documents/KAUST/global change meta/R/export/Global_CR_matchinfo.csv', sep = ',', header = TRUE)
 
@@ -121,6 +136,11 @@ sdat2<- sdat %>%
   mutate(log_temp_change=log(temp_change)) %>% 
   mutate(yit=log(abs(yi)+1)) %>%   # get log transform o yi
   mutate(yi_log=if_else(yi<0,(yit*-1), yit))
+
+## unique locations   names(sdat2)
+mes<- sdat2 %>% 
+  distinct(Latitude.decimal.degrees, Longitude.decimal.degrees.) %>% 
+  arrange(Latitude.decimal.degrees)
 
 hist(sdat2$yi)
 hist(sdat2$yi_log)
